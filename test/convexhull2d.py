@@ -6,7 +6,7 @@ import numba as nb
 import nbstl
 
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-PointStack = nbstl.TypedDeque(t_point)
+PointStack = nbstl.TypedStack(t_point)
 
 @nb.njit
 def convex_line(pts, idx):
@@ -14,14 +14,14 @@ def convex_line(pts, idx):
     for i in idx:
         p2 = pts[i]
         while hull.size>1:
-            p1 = hull.last(0)
-            p0 = hull.last(1)
+            p1 = hull.top(0)
+            p0 = hull.top(1)
             s = p0.x*p1.y - p0.y*p1.x
             s += p1.x*p2.y - p1.y*p2.x
             s += p2.x*p0.y - p2.y*p0.x
             if s<-1e-6: break
-            hull.pop_back()
-        hull.push_back(p2.x, p2.y)
+            hull.pop()
+        hull.push(p2.x, p2.y)
     return hull.body[:hull.size]
 
 @nb.njit
@@ -34,7 +34,7 @@ def convexhull(pts):
 if __name__ == '__main__':
     from time import time
 
-    pts = np.random.randn(102400,2).astype(np.float32)
+    pts = np.random.randn(1024,2).astype(np.float32)
     pts = pts.ravel().view(t_point)
 
     hull = convexhull(pts)
@@ -50,4 +50,5 @@ if __name__ == '__main__':
     
     plt.plot(pts['x'], pts['y'], 'r.')
     plt.plot(hull['x'], hull['y'], 'g-')
+    plt.title('Convex Hull')
     plt.show()

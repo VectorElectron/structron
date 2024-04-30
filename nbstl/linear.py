@@ -50,7 +50,7 @@ class Deque:
         self.tail = self.cap-1
         self.cap *= 2
 
-def type_deque(dtype):
+def type_deque(dtype, mode='deque'):
     fields = [('head', nb.int32), ('tail', nb.int32),
           ('cap', nb.uint32), ('size', nb.uint32),
           ('body', nb.from_dtype(dtype)[:])]
@@ -87,11 +87,20 @@ def type_deque(dtype):
     typeddeque = '\n'.join([i[4:] for i in typeddeque.split('\n')])
     exec(typeddeque, local)
     TypedDeque = local['TypedDeque']
+    if mode=='deque': pass
+    if mode=='stack':
+        TypedDeque.push = TypedDeque.push_back
+        TypedDeque.pop = TypedDeque.pop_back
+        TypedDeque.top = TypedDeque.last
+    if mode=='queue':
+        TypedDeque.push = TypedDeque.push_back
+        TypedDeque.pop = TypedDeque.pop_front
+        TypedDeque.top = TypedDeque.first
     return nb.experimental.jitclass(fields)(TypedDeque)
 
 IntDeque = type_deque(np.uint32)
 
-def memory_deque(typememory):
+def memory_deque(typememory, mode='deque'):
     queue_type = nb.deferred_type()
     queue_type.define(IntDeque.class_type.instance_type)
     
@@ -137,6 +146,16 @@ def memory_deque(typememory):
     memorydeque = '\n'.join([i[4:] for i in memorydeque.split('\n')])
     exec(memorydeque, local)
     MemoryDeque = local['MemoryDeque']
+    if mode=='deque': pass
+    if mode=='stack':
+        MemoryDeque.push = MemoryDeque.push_back
+        MemoryDeque.pop = MemoryDeque.pop_back
+        MemoryDeque.top = MemoryDeque.last
+    if mode=='queue':
+        MemoryDeque.push = MemoryDeque.push_back
+        MemoryDeque.pop = MemoryDeque.pop_front
+        MemoryDeque.top = MemoryDeque.first
+        
     fields = [('queue', nb.optional(queue_type)),
               ('memory', nb.optional(memory_type))]
     
@@ -144,8 +163,18 @@ def memory_deque(typememory):
 
 def TypedDeque(dtype):
     if hasattr(dtype, 'class_type'):
-        return memory_deque(dtype)
-    else: return type_deque(dtype)
+        return memory_deque(dtype, 'deque')
+    else: return type_deque(dtype, 'deque')
+
+def TypedStack(dtype):
+    if hasattr(dtype, 'class_type'):
+        return memory_deque(dtype, 'stack')
+    else: return type_deque(dtype, 'stack')
+
+def TypedQueue(dtype):
+    if hasattr(dtype, 'class_type'):
+        return memory_deque(dtype, 'queue')
+    else: return type_deque(dtype, 'queue')
 
 if __name__ == '__main__':
     from time import time
