@@ -7,7 +7,7 @@ import nbstl
 
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 PointStack = nbstl.TypedStack(t_point)
-
+aaa
 @nb.njit
 def convex_line(pts, idx):
     hull = PointStack(128)
@@ -34,7 +34,7 @@ def convexhull(pts):
 if __name__ == '__main__':
     from time import time
 
-    pts = np.random.randn(1024,2).astype(np.float32)
+    pts = np.random.randn(102400,2).astype(np.float32)
     pts = pts.ravel().view(t_point)
 
     hull = convexhull(pts)
