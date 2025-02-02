@@ -158,7 +158,7 @@ def type_hash(ktype, vtype=None):
 def memory_hash(ktype, typememory):
     IntHash = type_hash(ktype, np.int32)
     local = {'typememory':typememory, 'IntHash':IntHash}
-    memoryhash = sub_class(MemoryHash, None, map=True)
+    memoryhash = sub_class(MemoryHash, None)
 
     exec(memoryhash, local)
     TypedHash = local['MemoryHash']
