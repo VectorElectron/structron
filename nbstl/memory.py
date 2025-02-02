@@ -4,7 +4,7 @@ import numba as nb
 class Memory: # [rep] Memory->TypedMemory
     def __init__(self, cap=128, dtype=np.uint32): # [rep] , dtype=np.uint32->
         self.idx = np.arange(1, cap+1, dtype=np.uint32)
-        self.cur = 0
+        self.cur = 0 # next blank
         self.cap = cap
         self.size = 0
         self.tail = cap-1
@@ -16,7 +16,6 @@ class Memory: # [rep] Memory->TypedMemory
         
         idx[:self.cap] = self.idx
         self.idx = idx
-        # self.idx[self.tail] = self.cap
         self.cur = self.cap
         self.cap *= 2
         self.tail = self.cap - 1
@@ -93,9 +92,9 @@ def TypedMemory(dtype):
 if __name__ == '__main__':
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
     PointMemory = TypedMemory(t_point)
-    # IntMemory = type_memory(np.dtype(np.uint32))
+    IntMemory = TypedMemory(np.uint32)
     points = PointMemory(2)
-    
+    lst = IntMemory(2)
     aaaa
     @nb.njit
     def test(points):
