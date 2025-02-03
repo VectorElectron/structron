@@ -3,7 +3,7 @@ import numba as nb
 from memory import sub_class, TypedMemory
 import inspect
 
-class AVLTree: # [rep] AVLTree->TypedAVLTree
+class RedBlackTree: # [rep] RedBlackTree->TypedRedBlackTree
     def __init__(self, cap=128, ktype=np.int32, vtype=None): # [rep] , ktype=np.int32, vtype=None->
         self.idx = np.zeros(cap, dtype=ilr)
         self.body = np.zeros(cap, dtype=vtype) # [if map]
@@ -33,8 +33,10 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
     def push(self, key, val=None):
         cur = parent = self.root
         idx = self.idx
+        
         if cur==-1:
             self.root = self.alloc(key, val)
+            idx[self.root].bal = 1 # new black root
             return
         
         hist = self.hist
@@ -42,7 +44,6 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
         n = 0
         
         while cur != -1:
-            parent = cur
             ilrk = idx[cur]
             ck = ilrk.key
             if key == ck:
@@ -57,23 +58,40 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
                 cur = ilrk.right
                 dir[n] = 1
             n += 1
+
+        
+        hist[n] = self.alloc(key, val)
+        pnode = idx[hist[n-1]]
+
+        if dir[n-1]==1: pnode.right = hist[n]
+        else: pnode.left = hist[n]
+
+        while n>=0:
+            if n==0: # root must be black
+                idx[hist[n]].bal = 1
+                break
             
-        node = self.alloc(key, val)
-        pnode = idx[parent]
+            c_n = hist[n]
+            f_n = hist[n-1]
+            f_d = dir[n-1]
+            if idx[f_n].bal == 1: break # father is black, need nothing
 
-        if key<pnode.key: pnode.left = node
-        else: pnode.right = node
-
-        for i in range(n-1, -1, -1):
-            n = hist[i]
-            d = dir[i]
-
-            idx[n].bal += d
-            bal = idx[n].bal
-
-            if bal==0: break
-            if bal==2 or bal==-2:
-                self.rotate(hist[i-1], dir[i-1], hist[i])
+            gf_n = hist[n-2]
+            gf_d = dir[n-2]
+            gf_node = idx[gf_n]
+            
+            uc_n = gf_node.right if gf_d==-1 else gf_node.left
+            uc_node = idx[uc_n] # get uncle
+            
+            if uc_n!=-1 and uc_node.bal == 0: # uncle is red
+                uc_node.bal = 1
+                gf_node.bal = 0
+                idx[f_n].bal = 1
+                n -= 2 # grand as current
+                continue
+            
+            if uc_n==-1 or uc_node.bal==1: # uncle is black
+                self.rotate(hist[n-3], dir[n-3], gf_n, gf_d, f_n, f_d, c_n)
                 break
 
     def pop(self, key):
@@ -165,72 +183,45 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
                 if self.rotate(hist[i-1], dir[i-1], hist[i]): break
         return self.body[cur] # [if map]
         
-    def rotate(self, i0, d0, i1):
+    def rotate(self, i0, b0, i1, b1, i2, b2, i3):
         idx = self.idx
-        n0, n1 = idx[i0], idx[i1]
-        n2 = n3 = n1
-        if n1.bal==-2:
-            i2, n2 = n1.left, idx[n1.left]
-        if n1.bal==2:
-            i2, n2 = n1.right, idx[n1.right]
-        if n2.bal==-1:
-            i3, n3 = n2.left, idx[n2.left]
-        if n2.bal==1:
-            i3, n3 = n2.right, idx[n2.right]
-        b1, b2, b3 = n1.bal, n2.bal, n3.bal
+        n0, n1, n2, n3 = idx[i0], idx[i1], idx[i2], idx[i3]
         
-        if b1==-2 and b2==-1:
+        if b1==-1 and b2==-1: # left-left
             n1.left = n2.right
             n2.right = i1
-            n1.bal = n2.bal = 0
+            n2.bal = 1
+            n1.bal = 0
             nroot = i2
             
-        if b1==2 and b2==1:
+        if b1==1 and b2==1: # right-right
             n1.right = n2.left
             n2.left = i1
-            n1.bal = n2.bal = 0
+            n2.bal = 1
+            n1.bal = 0
             nroot = i2
 
-        if b1==-2 and b2==1:
+        if b1==-1 and b2==1: # left-right
             n1.left = n3.right
             n3.right = i1
             n2.right = n3.left
             n3.left = i2
-            
-            n3.bal = 0
-            n1.bal = 1 if b3==-1 else 0
-            n2.bal = -1 if b3==1 else 0
+            n3.bal = 1
+            n1.bal = 0
             nroot = i3
 
-        if b1==2 and b2==-1:
+        if b1==1 and b2==-1: # right-left
             n1.right = n3.left
             n3.left = i1
             n2.left = n3.right
             n3.right = i2
-            
-            n3.bal = 0
-            n1.bal = -1 if b3==1 else 0
-            n2.bal = 1 if b3==-1 else 0
+            n3.bal = 1
+            n1.bal = 0
             nroot = i3
-        
-        if b1==-2 and b2==0:
-            n1.left = n2.right
-            n2.right = i1
-            n2.bal = 1
-            n1.bal = -1
-            nroot = i2
-
-        if b1==2 and b2==0:
-            n1.right = n2.left
-            n2.left = i1
-            n2.bal = -1
-            n1.bal = 1
-            nroot = i2
             
         if i0==-1: self.root = nroot
-        elif d0==-1: n0.left = nroot
-        elif d0==1: n0.right = nroot
-        return b2 == 0
+        elif b0==-1: n0.left = nroot
+        elif b0==1: n0.right = nroot
 
     def get(self, key):
         cur = self.root
@@ -363,11 +354,11 @@ def type_avl(ktype, vtype=None):
     
     local = {'ilr':ilr, 'vtype':vtype, 'ktype':ktype, 'np':np}
 
-    subavl = sub_class(AVLTree, vtype, map=vtype is not None)
+    subavl = sub_class(RedBlackTree, vtype, map=vtype is not None)
     # print(subavl)
     exec(subavl, local)
-    TypedAVLTree = local['TypedAVLTree']
-    return nb.experimental.jitclass(fields)(TypedAVLTree)
+    TypedRedBlackTree = local['TypedRedBlackTree']
+    return nb.experimental.jitclass(fields)(TypedRedBlackTree)
 
 class MemoryAVLTree:
     def __init__(self, cap=128, memory=None):
@@ -411,7 +402,7 @@ def memory_avl(ktype, typememory):
               ('memory', typememory.class_type.instance_type)]
     return nb.experimental.jitclass(fields)(TypedAVLTree)
 
-def TypedAVLTree(ktype, dtype=None):
+def TypedRedBlackTree(ktype, dtype=None):
     if hasattr(dtype, 'class_type'):
         return memory_avl(ktype, dtype)
     else: return type_avl(ktype, dtype)
@@ -427,7 +418,7 @@ def print_tree(tree, mar=3, bal=False):
             continue
         ilrk = tree.idx[cur]
         value = ilrk['key']
-        if bal: val = (val, ilrk['bal'])
+        if ilrk['bal']: value = '('+str(value)+')'
         rst.append(value)
         nodes.append(ilrk['left'])
         nodes.append(ilrk['right'])
@@ -453,7 +444,7 @@ if __name__ == '__main__':
     PointMemory = TypedMemory(t_point)
     points = PointMemory()
     
-    IntAVL = TypedAVLTree(np.int32)
+    IntRedBlack = TypedRedBlackTree(np.int32)
 
     # lst = PointAVL(memory=points)
     
@@ -465,11 +456,13 @@ if __name__ == '__main__':
     
     np.random.seed(42)
     x = np.random.randint(0, 1024000000, 1024000)
+
+    # np.random.shuffle(x)
     
-    points = IntAVL(10240000+1)
+    points = IntRedBlack(1024000+1)
     test(points, x)
 
-    points = IntAVL(10240000+1)
+    points = IntRedBlack(1024000+1)
     start = time()
     test(points, x)
     print(time()-start)
