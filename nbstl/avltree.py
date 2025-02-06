@@ -1,6 +1,6 @@
 import numpy as np
 import numba as nb
-from memory import sub_class, TypedMemory
+from .memory import sub_class, TypedMemory
 import inspect
 
 class AVLTree: # [rep] AVLTree->TypedAVLTree
@@ -58,11 +58,11 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
                 dir[n] = 1
             n += 1
             
-        node = self.alloc(key, val)
-        pnode = idx[parent]
+        hist[n] = self.alloc(key, val)
+        pnode = idx[hist[n-1]]
 
-        if key<pnode.key: pnode.left = node
-        else: pnode.right = node
+        if dir[n-1]==1: pnode.right = hist[n]
+        else: pnode.left = hist[n]
 
         for i in range(n-1, -1, -1):
             n = hist[i]
@@ -73,125 +73,120 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
 
             if bal==0: break
             if bal==2 or bal==-2:
-                self.rotate(hist[i-1], dir[i-1], hist[i])
+                self.rotate(hist[i-1], dir[i-1],
+                    hist[i], dir[i], hist[i+1], dir[i+1], hist[i+2])
                 break
 
     def pop(self, key):
         parent = -1
         cur = self.root
-        if cur==-1: return # blank tree
         
-
         hist = self.hist
         dir = self.dir
-        n = 0
         idx = self.idx
+        body = self.body # [if map]
+        n = 0
 
+        # find the node
         while cur!=-1:
             ilrk = idx[cur]
-            
             ck = ilrk.key
-            
+            hist[n] = cur
             if key == ck:
                 break
-            hist[n] = parent = cur
             if key < ck:
                 cur = ilrk.left
                 dir[n] = -1
             if key > ck:
                 cur = ilrk.right
                 dir[n] = 1
+
             # print(idx[hist[n]].key, dir[n])
             n += 1
+        
+        # for i in hist[:n+1]: print(idx[i].key)
         if cur == -1: return # not found
-        
-        
-        if parent == -1: # only root
-            self.free(cur)
-            self.root = -1
-            return
 
-        pdir = dir[n-1]
-        node, pnode = idx[cur], idx[parent]
+        node = idx[cur]
+        value = body[cur] # [if map]
         
-        if node.left==-1 and node.right==-1:
-            if dir[n-1]==-1: pnode.left = -1
-            elif dir[n-1]==1: pnode.right = -1
-            self.free(cur)
-        elif node.left==-1:
-            if dir[n-1]==-1: pnode.left = node.right
-            if dir[n-1]==1:  pnode.right = node.right
-            self.free(cur)
-        elif node.right==-1:
-            if dir[n-1]==-1: pnode.left = node.left
-            if dir[n-1]==1: pnode.right = node.left
-            self.free(cur)
-        else:
+        # pnode = idx[hist[n-1]]
+        
+        # find the post next one
+        if node.left!=-1 and node.right!=-1:
             dir[n] = 1
-            hist[n] = cur
-            # print(idx[hist[n]].key, dir[n])
             n += 1
             scur = node.right
             while True:
                 snode = idx[scur]
-                if snode.left==-1: break
                 hist[n] = scur
+                if snode.left==-1: break
                 dir[n] = -1
                 # print(idx[hist[n]].key, dir[n])
                 n += 1
                 scur = snode.left
+            node.key = snode.key
+            body[cur] = body[scur] # [if map]
+            cur = scur
+            node = snode
+            
 
-            # print('snode', snode.key)
-            snode.left = node.left
-            snode.bal = node.bal
-            if node.right != scur:
-                idx[hist[n-1]].left = snode.right
-                snode.right = node.right
-                
-            if pdir == -1: pnode.left = scur
-            if pdir == 1: pnode.right = scur
-            self.free(cur)
+        # del black node with one red child
+        if node.left != -1:
+            node.key = idx[node.left].key
+            body[cur] = body[node.left] # [if map]
+            self.free(node.left)
+            node.left = -1
+            node.bal = 0
+        elif node.right != -1:
+            node.key = idx[node.right].key
+            body[cur] = body[node.right] # [if map]
+            self.free(node.right)
+            node.right = -1
+            node.bal = 0
+        else:
+            if n==0: self.root = -1
+            elif dir[n-1]==-1: idx[hist[n-1]].left = -1
+            elif dir[n-1]==1: idx[hist[n-1]].right = -1
+            self.free(hist[n])
 
         for i in range(n-1, -1, -1):
             n = hist[i]
             d = dir[i]
-
-            idx[n].bal -= d
-            bal = idx[n].bal
-
+            c_n = idx[n]
+            c_n.bal -= d
+            bal = c_n.bal
+            
             if bal==1 or bal==-1: break
-
             if bal==2 or bal==-2:
-                if self.rotate(hist[i-1], dir[i-1], hist[i]): break
+                # if self.rotate(hist[i-1], dir[i-1], hist[i]): break
+                i2 = c_n.right if dir[i]==-1 else c_n.left
+                n2 = idx[i2]
+                stop = n2.bal==0
+                i3 = n2.right if n2.bal==1 else n2.left
+                self.rotate(hist[i-1], dir[i-1],
+                    hist[i], -dir[i], i2, n2.bal, i3)
+                if stop: break
         return self.body[cur] # [if map]
         
-    def rotate(self, i0, d0, i1):
+    def rotate(self, i0, b0, i1, b1, i2, b2, i3):
         idx = self.idx
-        n0, n1 = idx[i0], idx[i1]
-        n2 = n3 = n1
-        if n1.bal==-2:
-            i2, n2 = n1.left, idx[n1.left]
-        if n1.bal==2:
-            i2, n2 = n1.right, idx[n1.right]
-        if n2.bal==-1:
-            i3, n3 = n2.left, idx[n2.left]
-        if n2.bal==1:
-            i3, n3 = n2.right, idx[n2.right]
-        b1, b2, b3 = n1.bal, n2.bal, n3.bal
-        
-        if b1==-2 and b2==-1:
+        n0, n1, n2, n3 = idx[i0], idx[i1], idx[i2], idx[i3]
+
+        if b1==-1 and b2==-1:
             n1.left = n2.right
             n2.right = i1
             n1.bal = n2.bal = 0
             nroot = i2
             
-        if b1==2 and b2==1:
+        if b1==1 and b2==1:
             n1.right = n2.left
             n2.left = i1
             n1.bal = n2.bal = 0
             nroot = i2
 
-        if b1==-2 and b2==1:
+        b3 = n3.bal
+        if b1==-1 and b2==1:
             n1.left = n3.right
             n3.right = i1
             n2.right = n3.left
@@ -201,8 +196,8 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
             n1.bal = 1 if b3==-1 else 0
             n2.bal = -1 if b3==1 else 0
             nroot = i3
-
-        if b1==2 and b2==-1:
+            
+        if b1==1 and b2==-1:
             n1.right = n3.left
             n3.left = i1
             n2.left = n3.right
@@ -213,34 +208,46 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
             n2.bal = 1 if b3==-1 else 0
             nroot = i3
         
-        if b1==-2 and b2==0:
+        if b1==-1 and b2==0:
             n1.left = n2.right
             n2.right = i1
             n2.bal = 1
             n1.bal = -1
             nroot = i2
 
-        if b1==2 and b2==0:
+        if b1==1 and b2==0:
             n1.right = n2.left
             n2.left = i1
             n2.bal = -1
             n1.bal = 1
             nroot = i2
-            
+        
         if i0==-1: self.root = nroot
-        elif d0==-1: n0.left = nroot
-        elif d0==1: n0.right = nroot
+        elif b0==-1: n0.left = nroot
+        elif b0==1: n0.right = nroot
         return b2 == 0
-
+    
     def get(self, key):
         cur = self.root
         while cur != -1:
             node = self.idx[cur]
             ck = node.key
             if key == ck:
-                return self.body[cur]
+                return self.body[cur] # [if map]
+                return cur
             if key < ck: cur = node.left
             if key > ck: cur = node.right
+
+    def has(self, key):
+        cur = self.root
+        while cur != -1:
+            node = self.idx[cur]
+            ck = node.key
+            if key == ck:
+                return True
+            if key < ck: cur = node.left
+            if key > ck: cur = node.right
+        return False
 
     def left(self, key):
         cur = parent = self.root        
@@ -270,12 +277,14 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
             while True:
                 lnode = idx[nxt]
                 if lnode.right==-1:
-                    return self.body[nxt]
+                    # return self.body[nxt] # [if map]
+                    return lnode.key
                 nxt = lnode.right
         else:
             for i in range(n-1, -1, -1):
                 if dir[i]==1:
-                    return self.body[hist[i]]
+                    # return self.body[hist[i]] # [if map]
+                    return idx[hist[i]].key
 
     def right(self, key):
         cur = parent = self.root
@@ -305,12 +314,14 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
             while True:
                 lnode = idx[nxt]
                 if lnode.left==-1:
-                    return self.body[nxt]
+                    # return self.body[nxt] # [if map]
+                    return lnode.key
                 nxt = lnode.left
         else:
             for i in range(n-1, -1, -1):
                 if dir[i]==-1:
-                    return self.body[hist[i]]
+                    # return self.body[hist[i]] # [if map]
+                    return idx[hist[i]].key
         
     def alloc(self, key, val=None):
         if self.size == self.cap:
@@ -387,6 +398,12 @@ class MemoryAVLTree:
         if idx is None: return
         return self.memory.body[int(idx)]
 
+    def has(self, key): return self.avl.has(key)
+
+    def left(self, key): return self.avl.left(key)
+
+    def right(self, key): return self.avl.right(key)
+    
     def __getitem__(self, key):
         return self.get(key)
 
@@ -427,7 +444,7 @@ def print_tree(tree, mar=3, bal=False):
             continue
         ilrk = tree.idx[cur]
         value = ilrk['key']
-        if bal: val = (val, ilrk['bal'])
+        if bal: value = (value, ilrk['bal'])
         rst.append(value)
         nodes.append(ilrk['left'])
         nodes.append(ilrk['right'])
@@ -455,22 +472,32 @@ if __name__ == '__main__':
     
     IntAVL = TypedAVLTree(np.int32)
 
-    # lst = PointAVL(memory=points)
     
-    # abcd
+    points = IntAVL()
+
     @nb.njit
-    def test(points, x):
+    def push_test(points, x):
         for i in x: points.push(i)
 
+    @nb.njit
+    def pop_test(points, x):
+        for i in x: points.pop(i)
+        
     
     np.random.seed(42)
-    x = np.random.randint(0, 1024000000, 1024000)
+    x = np.arange(10240000)
+    np.random.shuffle(x)
+
+    # np.random.shuffle(x)
     
     points = IntAVL(10240000+1)
-    test(points, x)
+    push_test(points, x[:3])
+    pop_test(points, x[:3])
 
     points = IntAVL(10240000+1)
-    start = time()
-    test(points, x)
-    print(time()-start)
+    a = time()
+    push_test(points, x)
+    b = time()
+    pop_test(points, x)
+    print(b-a, time()-b)
     

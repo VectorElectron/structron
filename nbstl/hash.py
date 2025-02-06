@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 
-from memory import TypedMemory, sub_class
+from .memory import TypedMemory, sub_class
 
 class Hash: # [rep] Hash->TypedHash
     def __init__(self, cap=16, ktype=np.int32, vtype=None): # [rep] , ktype=np.int32, vtype=None->

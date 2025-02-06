@@ -3,7 +3,7 @@ import numba as nb
 
 class Memory: # [rep] Memory->TypedMemory
     def __init__(self, cap=128, dtype=np.uint32): # [rep] , dtype=np.uint32->
-        self.idx = np.arange(1, cap+1, dtype=np.uint32)
+        self.idx = np.arange(1, cap+1, dtype=np.int32)
         self.cur = 0 # next blank
         self.cap = cap
         self.size = 0
@@ -11,7 +11,7 @@ class Memory: # [rep] Memory->TypedMemory
         self.body = np.zeros(cap, dtype)
 
     def expand(self):
-        idx = np.arange(1, self.cap*2+1, dtype=np.uint32)
+        idx = np.arange(1, self.cap*2+1, dtype=np.int32)
         self.body = np.concatenate((self.body, self.body))
         
         idx[:self.cap] = self.idx
@@ -76,7 +76,7 @@ def sub_class(cls, dtype, **key):
     return '\n'.join(lines)
 
 def TypedMemory(dtype):
-    fields = [('idx', nb.uint32[:]), ('cur', nb.uint32),
+    fields = [('idx', nb.int32[:]), ('cur', nb.int32),
               ('cap', nb.uint32), ('size', nb.uint32),
               ('tail', nb.uint32), ('body', nb.from_dtype(dtype)[:])]
     
@@ -92,6 +92,8 @@ def TypedMemory(dtype):
 if __name__ == '__main__':
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
     PointMemory = TypedMemory(t_point)
+
+    aaaa
     IntMemory = TypedMemory(np.uint32)
     points = PointMemory(2)
     lst = IntMemory(2)

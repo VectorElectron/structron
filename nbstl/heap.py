@@ -1,6 +1,6 @@
 import numpy as np
 import numba as nb
-from memory import TypedMemory, sub_class
+from .memory import TypedMemory, sub_class
 
 class Heap: # [rep] Heap->TypedHeap
     def __init__(self, cap=128, ktype=np.uint32, dtype=np.uint32): # [rep] , ktype=np.uint32, dtype=np.uint32->

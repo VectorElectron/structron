@@ -1,7 +1,7 @@
 import numpy as np
 import numba as nb
 
-from memory import TypedMemory, sub_class
+from .memory import TypedMemory, sub_class
 
 class Deque: # [rep] Deque->TypedDeque
     def __init__(self, cap, dtype=np.uint32): # [rep] , dtype=np.uint32-> 
@@ -49,6 +49,8 @@ class Deque: # [rep] Deque->TypedDeque
         self.head = 0
         self.tail = self.cap-1
         self.cap *= 2
+
+    def __len__(self): return self.size
 
 def type_deque(dtype, mode='deque'):
     fields = [('head', nb.int32), ('tail', nb.int32),

@@ -4,120 +4,100 @@ import numpy as np
 import numba as nb
 import nbstl
 
+# custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # TypedMemory cast Memory as dtype
 PointMemory = nbstl.TypedMemory(t_point)
+points = PointMemory(10)
+i = points.push((1,1)) # malloc and put value
+points[i] # get the value
+points.pop(i) # free i
+points.size, len(points) # size
 
-'''
-like C Memory:
-push means alloc and return the index
-pop means free and the space would be reuse in circle
-auto expand when nedded
-'''
-def point_memory_test():
-    print('\n>>> point memory test:')
-    points = PointMemory(10)
-    i1 = points.push(1, 2)
-    i2 = points.push(3, 4)
+# TypedDeque
+PointDeque = nbstl.TypedDeque(t_point)
+points = PointDeque(10)
+points.push_front((1, 1)) # push front
+points.push_back((2, 2)) # push back
+points.first() # get the first
+points.last() # get the last
+points.pop_front() # pop front
+points.pop_back() # pop back
+points.size, len(points) # size
 
-    p = points[i1]
-    print('point1:', p)
-    print('point.xy:', p.x, p.y)
+# TypedStack
+PointStack = nbstl.TypedStack(t_point)
+points = PointStack(10)
+points.push((1, 1)) # push stack
+points.push((2,2))
+points.top() # get the top
+points.pop() # pop stack
+points.size, len(points) # size
 
-    print('size:', points.size)
-    print('pop i2:', points.pop(i2))
-    print('size:', points.size)
+# TypedQueue
+PointQueue = nbstl.TypedQueue(t_point)
+points = PointQueue(10)
+points.push((1, 1)) # push stack
+points.push((2,2))
+points.top() # get the top
+points.pop() # pop stack
+points.size, len(points) # size
 
-'''
-Deque, also could be used as Queue or Stack
-push_front, push_back, pop_front, pop_back, first, last
-auto expand when needed
-'''
-def deque_type_test():
-    print('\n>>> point deque test:')
-    PointDeque = nbstl.TypedDeque(t_point)
-    points = PointDeque(10)
-    print('push 3 points')
-    points.push_front(1, 1)
-    points.push_back(2, 2)
-    points.push_front(0, 0)
-    print('size:', points.size)
-    print('first point:', points.first())
-    print('first point:', points.last())
-    print('pop front:', points.pop_front())
-    print('pop back:', points.pop_back())
-    print('size:', points.size)
+# TypedHeap
+IntHeap = nbstl.TypedHeap(np.int32)
+heap = IntHeap(10)
+heap.push(1) # push heap
+heap.top() # get the top
+heap.pop() # pop heap
+len(heap), heap.size # size
 
-'''
-MemoryDeque, combine a IntDeque and a TypedMemory
-the IntDeque used as index (pointer)
-MemoryDeque is equivalent to TypedDeque in functionality,
-but maintaining pointers incurs more time overhead,
-for deque need not swap, so TypedDeque is recommended.
-'''
-def deque_memory_test():
-    print('\n>>> memory deque test:')
-    PointDeque = nbstl.TypedDeque(PointMemory)
-    points = PointDeque(10)
-    print('push 3 points')
-    points.push_front(1, 1)
-    points.push_back(2, 2)
-    points.push_front(0, 0)
-    print('size:', points.size)
-    print('first point:', points.first())
-    print('first point:', points.last())
-    print('pop front:', points.pop_front())
-    print('pop back:', points.pop_back())
-    print('size:', points.size)
+# TypedHash
+IntHash = nbstl.TypedHash(np.int32)
+hashset = IntHash(10)
+hashset.push(4) # push hash
+hashset.has(4) # check in
+hashset.pop(4) # pop hash
+len(hashset), hashset.size # size
 
-'''
-Heap, also could be used as orderd queue
-push, pop
-auto expand when needed
-'''
-def heap_type_test():
-    print('\n>>> point heap test:')
-    PointHeap = nbstl.TypedHeap(t_point)
-    points = PointHeap(10)
-    print('push key:0.5, value:(5,5)')
-    points.push(0.5, 5, 5)
-    print('push key:0.2, value:(2,2)')
-    points.push(0.2, 2, 2)
-    print('push key:0.7, value:(7,7)')
-    points.push(0.7, 7, 7)
-    print('size:', points.size)
-    print('pop min:', points.pop())
-    print('pop min:', points.pop())
-    print('size:', points.size)
+# TypedRedBlackTree
+IntTree = nbstl.TypedRBTree(np.int32)
+treeset = IntTree(10)
+treeset.push(1) # push tree
+treeset.has(1) # check in
+treeset.pop(1) # pop tree
+treeset.left(1) # the key's left neighbour
+treeset.right(1) # the key's right neighbour
+len(treeset), treeset.size # size
 
-'''
-MemoryHeap, combine a IntHeap and a TypedMemory
-the IntHeap used as index (pointer)
-MemoryDeque is equivalent to TypedDeque in functionality,
-when The dtype is simple or the count is not large,
-TypedHeap is faster than MemoryHeap.
-but when the dtype is heavy and the count is large,
-the MemoryHeap just swap the pointer, So may be faster.
-'''
-def heap_memory_test():
-    print('\n>>> memory heap test:')
-    PointHeap = nbstl.TypedHeap(PointMemory)
-    points = PointHeap(10)
-    print('push key:0.5, value:(5,5)')
-    points.push(0.5, 5, 5)
-    print('push key:0.2, value:(2,2)')
-    points.push(0.2, 2, 2)
-    print('push key:0.7, value:(7,7)')
-    points.push(0.7, 7, 7)
-    print('size:', points.size)
-    print('pop min:', points.pop())
-    print('pop min:', points.pop())
-    print('size:', points.size)
-    
-if __name__ == '__main__':
-    point_memory_test()
-    deque_type_test()
-    deque_memory_test()
-    heap_type_test()
-    heap_memory_test()
+# TypedAVLTree
+IntTree = nbstl.TypedRBTree(np.int32)
+treeset = IntTree(10)
+treeset.push(1) # push tree
+treeset.has(1) # check in
+treeset.pop(1) # pop tree
+treeset.left(1) # the key's left neighbour
+treeset.right(1) # the key's right neighbour
+len(treeset), treeset.size # size
+
+# Map Mode: <Heap, Hash, RedBlackTree, AVLTree>
+# here using RedBlackTree as example
+IntPointTree = nbstl.TypedRBTree(np.int32, t_point) # typed it with k-v
+treemap = IntPointTree(10)
+treemap.push(1, (1,1)) # push key, value in the tree
+treemap[1] # get the value by key
+# ... other method same as TypedRedBlackTree
+
+# Ref Mode: <All>
+# here using RedBlackTree as example
+PointMemory = nbstl.TypedMemory(t_point)
+points = PointMemory(10)
+# replace dtype with typedmemory
+IntPointTree = nbstl.TypedRBTree(np.int32, PointMemory) 
+treeset = IntPointTree(10, memory=points) # init with memory instance
+treeset.push(1, (1,1)) # push tree
+treeset.has(1) # check in
+treeset.pop(1) # pop tree
+treeset.left(1) # the key's left neighbour
+treeset.right(1) # the key's right neighbour
+len(treeset), treeset.size # size

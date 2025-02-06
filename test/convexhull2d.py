@@ -7,7 +7,7 @@ import nbstl
 
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 PointStack = nbstl.TypedStack(t_point)
-aaa
+
 @nb.njit
 def convex_line(pts, idx):
     hull = PointStack(128)
@@ -21,7 +21,7 @@ def convex_line(pts, idx):
             s += p2.x*p0.y - p2.y*p0.x
             if s<-1e-6: break
             hull.pop()
-        hull.push(p2.x, p2.y)
+        hull.push((p2.x, p2.y))
     return hull.body[:hull.size]
 
 @nb.njit
