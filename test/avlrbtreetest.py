@@ -12,7 +12,7 @@ t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 FloatAVL = nbstl.TypedAVLTree(np.float32)
 lst = FloatAVL()
 
-x = np.random.rand(1000000)
+x = np.random.rand(10000000).astype(np.float32)
 
 @nb.njit
 def insert(lst, x):
@@ -30,7 +30,7 @@ a = time()
 insert(lst, x)
 b = time()
 pop(lst, x)
-print('100w number avl insert %.3fs del %.3f s:'%(b-a, time()-b))
+print('1000w number avl insert %.3fs del %.3f s:'%(b-a, time()-b))
 
 # TypedMemory cast Memory as dtype
 FloatRB = nbstl.TypedRBTree(np.float32)
@@ -44,4 +44,4 @@ a = time()
 insert(lst, x)
 b = time()
 pop(lst, x)
-print('100w number redblack insert %.3fs del %.3f s:'%(b-a, time()-b))
+print('1000w number redblack insert %.3fs del %.3f s:'%(b-a, time()-b))
