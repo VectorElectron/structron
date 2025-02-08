@@ -32,11 +32,11 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
 
     def push(self, key, val=None):
         cur = parent = self.root
-        idx = self.idx
         if cur==-1:
             self.root = self.alloc(key, val)
             return
         
+        idx = self.idx
         hist = self.hist
         dir = self.dir
         n = 0
@@ -59,6 +59,7 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
             n += 1
             
         hist[n] = self.alloc(key, val)
+        idx = self.idx
         pnode = idx[hist[n-1]]
 
         if dir[n-1]==1: pnode.right = hist[n]

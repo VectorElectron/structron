@@ -5,9 +5,11 @@ import numpy as np
 import numba as nb
 import nbstl
 
+# build Point dtype and PointStack
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 PointStack = nbstl.TypedStack(t_point)
 
+# push to stack one by one, if not turn right, pop
 @nb.njit
 def convex_line(pts, idx):
     hull = PointStack(128)
@@ -24,6 +26,7 @@ def convex_line(pts, idx):
         hull.push((p2.x, p2.y))
     return hull.body[:hull.size]
 
+# get up line and down line, then concat the hull
 @nb.njit
 def convexhull(pts):
     idx = np.argsort(pts['x'])

@@ -32,13 +32,13 @@ class RBTree: # [rep] RBTree->TypedRBTree
 
     def push(self, key, val=None):
         cur = parent = self.root
-        idx = self.idx
         
         if cur==-1:
             self.root = self.alloc(key, val)
-            idx[self.root].bal = 1 # new black root
+            self.idx[self.root].bal = 1 # new black root
             return
-        
+
+        idx = self.idx
         hist = self.hist
         dir = self.dir
         n = 0
@@ -58,26 +58,32 @@ class RBTree: # [rep] RBTree->TypedRBTree
                 cur = ilrk.right
                 dir[n] = 1
             n += 1
-
+        
         hist[n] = self.alloc(key, val)
+        idx = self.idx
+        
         pnode = idx[hist[n-1]]
 
         if dir[n-1]==1: pnode.right = hist[n]
         else: pnode.left = hist[n]
-
+        
+        
         while n>=0:
+            
             if n==0: # root must be black
                 idx[hist[n]].bal = 1
                 break
-            
+                
             c_i = hist[n]
             f_i = hist[n-1]
             f_d = dir[n-1]
+            
             if idx[f_i].bal == 1: break # father is black, need nothing
 
             gf_i = hist[n-2]
             gf_d = dir[n-2]
             gf_node = idx[gf_i]
+            
             
             uc_n = gf_node.right if gf_d==-1 else gf_node.left
             uc_node = idx[uc_n] # get uncle
@@ -88,6 +94,8 @@ class RBTree: # [rep] RBTree->TypedRBTree
                 idx[f_i].bal = 1
                 n -= 2 # grand as current
                 continue
+
+            if key==40671: print('here', idx.size, self.size)
             
             if uc_n==-1 or uc_node.bal==1: # uncle is black
                 # self.rotate(hist[n-3], dir[n-3], gf_i, gf_d, f_i, f_d, c_i)
@@ -587,7 +595,45 @@ def print_tree(tree, mar=4, bal=False):
         print(''.join(line))
         s += 2 ** r
     print()
+
+def check_rb_tree(tree, index):
+    # 如果当前节点是NIL节点（-1），则返回True和1（因为NIL节点是黑色的）
+    if index == -1:
+        return True, 1
     
+    # 获取当前节点的信息
+    node = tree[index]
+    left_index = node['left']
+    right_index = node['right']
+    bal = node['bal']
+    
+    # 检查性质1：根节点必须是黑色的
+    if index == 0 and bal != 1:
+        return False, 0
+    
+    # 检查性质3：红色节点的子节点必须是黑色的
+    if bal == 0:
+        if left_index != -1 and tree[left_index]['bal'] != 1:
+            return False, 0
+        if right_index != -1 and tree[right_index]['bal'] != 1:
+            return False, 0
+    
+    # 递归检查左子树和右子树
+    left_valid, left_black_height = check_rb_tree(tree, left_index)
+    right_valid, right_black_height = check_rb_tree(tree, right_index)
+    
+    # 如果左子树或右子树不合法，则整个树不合法
+    if not left_valid or not right_valid:
+        return False, 0
+    
+    # 检查性质4：从当前节点到叶子节点的所有路径的黑色节点数必须相同
+    if left_black_height != right_black_height:
+        return False, 0
+    
+    # 返回当前子树是否合法以及当前子树的黑色高度
+    # 如果当前节点是黑色的，则黑色高度加1
+    return True, left_black_height + (1 if bal == 1 else 0)
+
 if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
@@ -597,13 +643,16 @@ if __name__ == '__main__':
     IntRedBlack = TypedRBTree(np.int32)
     
     
-    '''
-    x = np.arange(100)
+    np.random.seed(1)
+    x = np.arange(70000)
     np.random.shuffle(x)
-
+    x = x[:65537]
+    
     points = IntRedBlack()
-    for i in x: points.push(i)
-    for i in x[12:]: points.pop(i)
+    for i in range(len(x)):
+        points.push(x[i])
+    
+    
     '''
     
     @nb.njit
@@ -632,4 +681,4 @@ if __name__ == '__main__':
     b = time()
     pop_test(points, x)
     print(b-a, time()-b)
-    
+    '''
