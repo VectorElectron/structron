@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # build Point dtype and PointStack
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-PointStack = nbstl.TypedStack(t_point)
+PointStack = structron.TypedStack(t_point)
 
 # push to stack one by one, if not turn right, pop
 @nb.njit

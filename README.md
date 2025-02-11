@@ -1,6 +1,6 @@
-# nbstl 
+# structron 
 
-Recently, I am trying to write some computational geometry-related functionalities. Since data structures like heaps, stacks, queues, trees, etc., are frequently used in computational geometry, these structures cannot be directly expressed as vector operations in NumPy. Also, Numba currently does not provide many advanced data structures. Therefore, I would like to develop a set of containers based on Numba to support computational geometry algorithms. nbstl comes from "Numba's STL container."
+Recently, I am trying to write some computational geometry-related functionalities. Since data structures like heaps, stacks, queues, trees, etc., are frequently used in computational geometry, these structures cannot be directly expressed as vector operations in NumPy. Also, Numba currently does not provide many advanced data structures. Therefore, I would like to develop a set of containers based on Numba to support computational geometry algorithms. structron comes from "Numba's STL container."
 
 ## Container Objects
 Regarding containers:
@@ -35,13 +35,13 @@ Numba provides TypedList, which is primarily designed for general-purpose workfl
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # Define a TypedMemory class for the custom dtype
-PointMemory = nbstl.TypedMemory(t_point)
+PointMemory = structron.TypedMemory(t_point)
 
 # Instantiate a memory pool with a capacity of 10
 points = PointMemory(10)
@@ -78,13 +78,13 @@ len(points)  # Total capacity of the memory pool
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # Define a TypedDeque class for the custom dtype
-PointDeque = nbstl.TypedDeque(t_point)
+PointDeque = structron.TypedDeque(t_point)
 
 # Instantiate a deque with a capacity of 10
 points = PointDeque(10)
@@ -127,13 +127,13 @@ len(points)  # Total capacity of the deque
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # Define a TypedStack class for the custom dtype
-PointStack = nbstl.TypedStack(t_point)
+PointStack = structron.TypedStack(t_point)
 
 # Instantiate a stack with a capacity of 10
 points = PointStack(10)
@@ -171,13 +171,13 @@ len(points)  # Same as `size`, not the total capacity
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # Define a TypedQueue class for the custom dtype
-PointQueue = nbstl.TypedQueue(t_point)
+PointQueue = structron.TypedQueue(t_point)
 
 # Instantiate a queue with a capacity of 10
 points = PointQueue(10)
@@ -214,10 +214,10 @@ points.size  # Current number of elements in the queue
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Define a TypedHeap class for int32
-IntHeap = nbstl.TypedHeap(np.int32)
+IntHeap = structron.TypedHeap(np.int32)
 
 # Instantiate a heap with a capacity of 10
 heap = IntHeap(10)
@@ -254,10 +254,10 @@ len(heap)  # Same as `size`
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Define a TypedHash class for int32
-IntHash = nbstl.TypedHash(np.int32)
+IntHash = structron.TypedHash(np.int32)
 
 # Instantiate a hash container with a capacity of 10
 hashset = IntHash(10)
@@ -293,10 +293,10 @@ len(hashset)  # Same as `size`
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Define a TypedRedBlackTree class for int32
-IntTree = nbstl.TypedRBTree(np.int32)
+IntTree = structron.TypedRBTree(np.int32)
 
 # Instantiate a tree with a capacity of 10
 treeset = IntTree(10)
@@ -339,10 +339,10 @@ len(treeset)  # Same as `size`
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Define a TypedAVLTree class for int32
-IntTree = nbstl.TypedAVLTree(np.int32)
+IntTree = structron.TypedAVLTree(np.int32)
 
 # Same as TypedRBTree
 ```
@@ -361,13 +361,13 @@ The map mode allows using `Heap`, `Hash`, `RedBlackTree`, and `AVLTree` as key-v
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # Define a TypedRBTree class for int32 keys and point values
-IntPointTree = nbstl.TypedRBTree(np.int32, t_point)
+IntPointTree = structron.TypedRBTree(np.int32, t_point)
 
 # Instantiate a tree with a capacity of 10
 treemap = IntPointTree(10)
@@ -405,17 +405,17 @@ Ref Mode allows containers to store references to data in a shared `TypedMemory`
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # Create a TypedMemory instance
-PointMemory = nbstl.TypedMemory(t_point)
+PointMemory = structron.TypedMemory(t_point)
 points = PointMemory(10)
 
 # Define a TypedRBTree class for int32 keys and PointMemory references
-IntPointTree = nbstl.TypedRBTree(np.int32, PointMemory)
+IntPointTree = structron.TypedRBTree(np.int32, PointMemory)
 
 # Instantiate the tree with the shared memory instance
 treeset = IntPointTree(10, memory=points)
@@ -463,7 +463,7 @@ Ref Mode is supported for all containers:
 More containers will be implemented successively. Welcome to provide suggestions or participate in project development.
 
 ## Demo
-The original intention of developing nbstl was to create a framework that facilitates the implementation of computational geometry algorithms. Here, we will demonstrate the usage of nbstl using a simple yet classic example, and perform a performance test.
+The original intention of developing structron was to create a framework that facilitates the implementation of computational geometry algorithms. Here, we will demonstrate the usage of structron using a simple yet classic example, and perform a performance test.
 
 ### Convex Hull
 Algorithm Implementation:
@@ -475,11 +475,11 @@ Algorithm Implementation:
 ```python
 import numpy as np
 import numba as nb
-import nbstl
+import structron
 
 # build Point dtype and PointStack
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-PointStack = nbstl.TypedStack(t_point)
+PointStack = structron.TypedStack(t_point)
 
 # push to stack one by one, if not turn right, pop
 @nb.njit
@@ -517,7 +517,7 @@ if __name__ == '__main__':
     hull = convexhull(pts)
     print('convex hull of 102400 point cost:', time()-start)
 ```
-![1714464150709](https://github.com/Image-Py/nbstl/assets/24822467/576eec48-5d0d-4d17-a84d-58ca70279845)
+![1714464150709](https://github.com/Image-Py/structron/assets/24822467/576eec48-5d0d-4d17-a84d-58ca70279845)
 
 Then, we perform performance comparison using Shapely for convex hull computation on datasets of the same.
 ```python

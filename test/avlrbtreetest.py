@@ -2,14 +2,14 @@ import sys; sys.path.append('../')
 
 import numpy as np
 import numba as nb
-import nbstl, random
+import structron, random
 from time import time
 
 # custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # TypedMemory cast Memory as dtype
-FloatAVL = nbstl.TypedAVLTree(np.float32)
+FloatAVL = structron.TypedAVLTree(np.float32)
 lst = FloatAVL()
 
 x = np.random.rand(10000000).astype(np.float32)
@@ -33,7 +33,7 @@ pop(lst, x)
 print('1000w number avl insert %.3fs del %.3f s:'%(b-a, time()-b))
 
 # TypedMemory cast Memory as dtype
-FloatRB = nbstl.TypedRBTree(np.float32)
+FloatRB = structron.TypedRBTree(np.float32)
 lst = FloatRB()
 
 insert(lst, x[:1])

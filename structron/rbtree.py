@@ -3,7 +3,7 @@ import numba as nb
 from .memory import sub_class, TypedMemory
 import inspect
 
-class AVLTree: # [rep] AVLTree->TypedAVLTree
+class RBTree: # [rep] RBTree->TypedRBTree
     def __init__(self, cap=128, ktype=np.int32, vtype=None): # [rep] , ktype=np.int32, vtype=None->
         self.idx = np.zeros(cap, dtype=ilr)
         self.body = np.zeros(cap, dtype=vtype) # [if map]
@@ -32,17 +32,18 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
 
     def push(self, key, val=None):
         cur = parent = self.root
+        
         if cur==-1:
             self.root = self.alloc(key, val)
+            self.idx[self.root].bal = 1 # new black root
             return
-        
+
         idx = self.idx
         hist = self.hist
         dir = self.dir
         n = 0
         
         while cur != -1:
-            parent = cur
             ilrk = idx[cur]
             ck = ilrk.key
             if key == ck:
@@ -57,25 +58,85 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
                 cur = ilrk.right
                 dir[n] = 1
             n += 1
-            
+        
         hist[n] = self.alloc(key, val)
         idx = self.idx
+        
         pnode = idx[hist[n-1]]
 
         if dir[n-1]==1: pnode.right = hist[n]
         else: pnode.left = hist[n]
+        
+        
+        while n>=0:
+            
+            if n==0: # root must be black
+                idx[hist[n]].bal = 1
+                break
+                
+            c_i = hist[n]
+            f_i = hist[n-1]
+            f_d = dir[n-1]
+            
+            if idx[f_i].bal == 1: break # father is black, need nothing
 
-        for i in range(n-1, -1, -1):
-            n = hist[i]
-            d = dir[i]
+            gf_i = hist[n-2]
+            gf_d = dir[n-2]
+            gf_node = idx[gf_i]
+            
+            
+            uc_n = gf_node.right if gf_d==-1 else gf_node.left
+            uc_node = idx[uc_n] # get uncle
+            
+            if uc_n!=-1 and uc_node.bal == 0: # uncle is red
+                uc_node.bal = 1
+                gf_node.bal = 0
+                idx[f_i].bal = 1
+                n -= 2 # grand as current
+                continue
+            
+            if uc_n==-1 or uc_node.bal==1: # uncle is black
+                # self.rotate(hist[n-3], dir[n-3], gf_i, gf_d, f_i, f_d, c_i)
+                # break
+            
+                i0, b0, b1, b2 = hist[n-3], dir[n-3], gf_d, f_d
+                n0, n1, n2, n3 = idx[i0], idx[gf_i], idx[f_i], idx[c_i]
+                
+                if b1==-1 and b2==-1: # left-left
+                    n1.left = n2.right
+                    n2.right = gf_i
+                    n2.bal = 1
+                    n1.bal = 0
+                    nroot = f_i
+                    
+                if b1==1 and b2==1: # right-right
+                    n1.right = n2.left
+                    n2.left = gf_i
+                    n2.bal = 1
+                    n1.bal = 0
+                    nroot = f_i
 
-            idx[n].bal += d
-            bal = idx[n].bal
+                if b1==-1 and b2==1: # left-right
+                    n1.left = n3.right
+                    n3.right = gf_i
+                    n2.right = n3.left
+                    n3.left = f_i
+                    n3.bal = 1
+                    n1.bal = 0
+                    nroot = c_i
 
-            if bal==0: break
-            if bal==2 or bal==-2:
-                self.rotate(hist[i-1], dir[i-1],
-                    hist[i], dir[i], hist[i+1], dir[i+1], hist[i+2])
+                if b1==1 and b2==-1: # right-left
+                    n1.right = n3.left
+                    n3.left = gf_i
+                    n2.left = n3.right
+                    n3.right = f_i
+                    n3.bal = 1
+                    n1.bal = 0
+                    nroot = c_i
+                    
+                if i0==-1: self.root = nroot
+                elif b0==-1: n0.left = nroot
+                elif b0==1: n0.right = nroot
                 break
 
     def pop(self, key):
@@ -130,7 +191,8 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
             body[cur] = body[scur] # [if map]
             cur = scur
             node = snode
-            
+        
+        # for i in hist[:n+1]: print(i, idx[i].key)
 
         # del black node with one red child
         if node.left != -1:
@@ -138,96 +200,163 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
             body[cur] = body[node.left] # [if map]
             self.free(node.left)
             node.left = -1
-            node.bal = 0
+            return value # [if map]
+            return
         elif node.right != -1:
             node.key = idx[node.right].key
             body[cur] = body[node.right] # [if map]
             self.free(node.right)
             node.right = -1
-            node.bal = 0
+            return value # [if map]
+            return
         else:
             if n==0: self.root = -1
             elif dir[n-1]==-1: idx[hist[n-1]].left = -1
             elif dir[n-1]==1: idx[hist[n-1]].right = -1
-            self.free(hist[n])
-
-        for i in range(n-1, -1, -1):
-            n = hist[i]
-            d = dir[i]
-            c_n = idx[n]
-            c_n.bal -= d
-            bal = c_n.bal
-            
-            if bal==1 or bal==-1: break
-            if bal==2 or bal==-2:
-                # if self.rotate(hist[i-1], dir[i-1], hist[i]): break
-                i2 = c_n.right if dir[i]==-1 else c_n.left
-                n2 = idx[i2]
-                stop = n2.bal==0
-                i3 = n2.right if n2.bal==1 else n2.left
-                self.rotate(hist[i-1], dir[i-1],
-                    hist[i], -dir[i], i2, n2.bal, i3)
-                if stop: break
-        return self.body[cur] # [if map]
         
-    def rotate(self, i0, b0, i1, b1, i2, b2, i3):
-        idx = self.idx
-        n0, n1, n2, n3 = idx[i0], idx[i1], idx[i2], idx[i3]
-
-        if b1==-1 and b2==-1:
-            n1.left = n2.right
-            n2.right = i1
-            n1.bal = n2.bal = 0
-            nroot = i2
-            
-        if b1==1 and b2==1:
-            n1.right = n2.left
-            n2.left = i1
-            n1.bal = n2.bal = 0
-            nroot = i2
-
-        b3 = n3.bal
-        if b1==-1 and b2==1:
-            n1.left = n3.right
-            n3.right = i1
-            n2.right = n3.left
-            n3.left = i2
-            
-            n3.bal = 0
-            n1.bal = 1 if b3==-1 else 0
-            n2.bal = -1 if b3==1 else 0
-            nroot = i3
-            
-        if b1==1 and b2==-1:
-            n1.right = n3.left
-            n3.left = i1
-            n2.left = n3.right
-            n3.right = i2
-            
-            n3.bal = 0
-            n1.bal = -1 if b3==1 else 0
-            n2.bal = 1 if b3==-1 else 0
-            nroot = i3
+        deln = hist[n]
         
-        if b1==-1 and b2==0:
-            n1.left = n2.right
-            n2.right = i1
-            n2.bal = 1
-            n1.bal = -1
-            nroot = i2
-
-        if b1==1 and b2==0:
-            n1.right = n2.left
-            n2.left = i1
-            n2.bal = -1
-            n1.bal = 1
-            nroot = i2
+        if n==0: self.root = -1
+        elif dir[n-1]==-1: idx[hist[n-1]].left = -1
+        elif dir[n-1]==1: idx[hist[n-1]].right = -1
         
-        if i0==-1: self.root = nroot
-        elif b0==-1: n0.left = nroot
-        elif b0==1: n0.right = nroot
-        return b2 == 0
-    
+        while n>0:
+            nroot = 0
+            stop = False
+            c_i = hist[n]
+            c_n = idx[c_i]
+
+            f_i = hist[n-1]
+            f_n = idx[f_i]
+            
+            g_n = idx[hist[n-2]]
+            
+            if c_n.bal==0 or n==0: # reach a red node or root
+                c_n.bal = 1
+                nroot = f_i
+                stop = True
+                
+            elif dir[n-1]==-1: # del left node
+                b_i = f_n.right
+                b_n = idx[b_i]
+
+                l_n = idx[b_n.left]
+                r_n = idx[b_n.right]
+            
+                if b_n.bal == 0: # brother is red
+                    #       F
+                    # del /   \ B [r]
+                    #      [b] / \ [b]
+                    f_n.right = b_n.left
+                    b_n.left = f_i
+                    f_n.bal = 0; b_n.bal = 1
+                    hist[n-1] = b_i
+                    dir[n] = dir[n-1] = -1
+                    hist[n] = f_i
+                    hist[n+1] = c_i
+        
+                    if n==1: self.root = b_i
+                    elif dir[n-2]==-1: g_n.left = b_i
+                    else: g_n.right = b_i
+                    n += 1
+                    continue
+                    
+                elif b_n.bal==1: # brother is black
+                    if b_n.right!=-1 and r_n.bal==0:
+                        #       F
+                        # del /   \ B
+                        #            \ [r]
+                        nroot = b_i
+                        b_n.bal = f_n.bal
+                        f_n.bal = r_n.bal = 1
+                        f_n.right = b_n.left
+                        b_n.left = f_i
+                        stop = True
+                        
+                    elif b_n.left!=-1 and l_n.bal==0:
+                        #       F
+                        # del /   \ B
+                        #      [r] /
+                        nroot = b_n.left
+                        l_n.bal = f_n.bal
+                        f_n.bal = 1
+                        f_n.right = l_n.left
+                        b_n.left = l_n.right
+                        l_n.left = f_i
+                        l_n.right = b_i
+                        stop = True
+                    else:
+                        #       F
+                        # del /   \ B
+                        #      [b] / \ [b]
+                        b_n.bal = 0
+                        n -= 1
+                        continue
+
+            elif dir[n-1]==1: # del right node
+                b_i = f_n.left
+                b_n = idx[b_i]
+
+                l_n = idx[b_n.left]
+                r_n = idx[b_n.right]
+            
+                if b_n.bal == 0: # brother is red
+                    #              F
+                    #      B [r] /   \ del
+                    # [b] / \ [b]
+                    f_n.left = b_n.right
+                    b_n.right = f_i
+                    f_n.bal = 0; b_n.bal = 1
+                    hist[n-1] = b_i
+                    dir[n] = dir[n-1] = 1
+                    hist[n] = f_i
+                    hist[n+1] = c_i
+
+                    if n==1: self.root = b_i
+                    elif dir[n-2]==-1: g_n.left = b_i
+                    else: g_n.right = b_i
+                    n += 1
+                    continue
+                    
+                elif b_n.bal==1: # brother is black
+                    if b_n.left!=-1 and l_n.bal==0:
+                        #         F
+                        #     B /   \ del
+                        # [r]/
+                        nroot = b_i
+                        b_n.bal = f_n.bal
+                        f_n.bal = l_n.bal = 1
+                        f_n.left = b_n.right
+                        b_n.right = f_i
+                        stop = True
+                    elif b_n.right!=-1 and r_n.bal==0:
+                        #       F
+                        #   B /   \ del
+                        #    \ [r]
+                        nroot = b_n.right
+                        r_n.bal = f_n.bal
+                        f_n.bal = 1
+                        f_n.left = r_n.right
+                        b_n.right = r_n.left
+                        r_n.right = f_i
+                        r_n.left = b_i
+                        stop = True
+                    else:
+                        #          F
+                        #      B /   \ del
+                        # [b] / \ [b]
+                        b_n.bal = 0
+                        n -= 1
+                        continue
+            
+            if n==1: self.root = nroot
+            elif dir[n-2]==-1: g_n.left = nroot
+            else: g_n.right = nroot
+            if stop: break
+
+        self.free(deln)
+        return value # [if map]
+
     def get(self, key):
         cur = self.root
         while cur != -1:
@@ -363,7 +492,7 @@ class AVLTree: # [rep] AVLTree->TypedAVLTree
         self.tail = idx
         return self.body[idx] # [if map]
 
-def type_avl(ktype, vtype=None):
+def type_rb(ktype, vtype=None):
     ilr = np.dtype([('id', np.int32), ('left', np.int32), ('right', np.int32),
                 ('key', ktype), ('bal', np.int8)])
     
@@ -375,15 +504,15 @@ def type_avl(ktype, vtype=None):
     
     local = {'ilr':ilr, 'vtype':vtype, 'ktype':ktype, 'np':np}
 
-    subavl = sub_class(AVLTree, vtype, map=vtype is not None)
+    subavl = sub_class(RBTree, vtype, map=vtype is not None)
     # print(subavl)
     exec(subavl, local)
-    TypedAVLTree = local['TypedAVLTree']
-    return nb.experimental.jitclass(fields)(TypedAVLTree)
+    TypedRBTree = local['TypedRBTree']
+    return nb.experimental.jitclass(fields)(TypedRBTree)
 
-class MemoryAVLTree:
+class MemoryRBTree:
     def __init__(self, cap=128, memory=None):
-        self.avl = IntAVLTree(cap)
+        self.avl = IntRBTree(cap)
         self.memory = memory if memory is not None else typememory(cap)
 
     def push(self, key, val):
@@ -417,24 +546,24 @@ class MemoryAVLTree:
     @property
     def size(self): return self.avl.size
 
-def memory_avl(ktype, typememory):
-    IntAVLTree = type_avl(ktype, np.int32)
-    local = {'typememory': typememory, 'IntAVLTree': IntAVLTree}
-    memoryavl = sub_class(MemoryAVLTree, None)
+def memory_rb(ktype, typememory):
+    IntRBTree = type_rb(ktype, np.int32)
+    local = {'typememory': typememory, 'IntRBTree': IntRBTree}
+    memoryavl = sub_class(MemoryRBTree, None)
     # print(memorydeque)
 
     exec(memoryavl, local)
-    TypedAVLTree = local['MemoryAVLTree']
-    fields = [('avl', IntAVLTree.class_type.instance_type),
+    TypedRBTree = local['MemoryRBTree']
+    fields = [('avl', IntRBTree.class_type.instance_type),
               ('memory', typememory.class_type.instance_type)]
-    return nb.experimental.jitclass(fields)(TypedAVLTree)
+    return nb.experimental.jitclass(fields)(TypedRBTree)
 
-def TypedAVLTree(ktype, dtype=None):
+def TypedRBTree(ktype, dtype=None):
     if hasattr(dtype, 'class_type'):
-        return memory_avl(ktype, dtype)
-    else: return type_avl(ktype, dtype)
+        return memory_rb(ktype, dtype)
+    else: return type_rb(ktype, dtype)
     
-def print_tree(tree, mar=3, bal=False):
+def print_tree(tree, mar=4, bal=False):
     nodes = [tree.root]
     rst = []
     while max(nodes)!=-1:
@@ -445,7 +574,7 @@ def print_tree(tree, mar=3, bal=False):
             continue
         ilrk = tree.idx[cur]
         value = ilrk['key']
-        if bal: value = (value, ilrk['bal'])
+        if ilrk['bal']: value = '('+str(value)+')'
         rst.append(value)
         nodes.append(ilrk['left'])
         nodes.append(ilrk['right'])
@@ -464,18 +593,61 @@ def print_tree(tree, mar=3, bal=False):
         print(''.join(line))
         s += 2 ** r
     print()
-    
+
+def check_valid(tree, index=0, first=True):
+    if first and tree[index]['bal']!=1: return False, 0
+    if index == -1 or index >= len(tree):
+        return True, 1  # NIL 节点是黑色的，且高度为 1
+
+    node = tree[index]
+    left_index = node['left']
+    right_index = node['right']
+    is_black = node['bal'] == 1
+
+    if node['bal'] not in {0, 1}:
+        return False, 0
+
+    left_valid, left_black_height = check_valid(tree, left_index, 0)
+    if not left_valid: return False, 0
+
+    right_valid, right_black_height = check_valid(tree, right_index, 0)
+    if not right_valid: return False, 0
+
+    if left_black_height != right_black_height:
+        return False, 0
+
+    # 计算当前节点的黑色高度
+    current_black_height = left_black_height + (1 if is_black else 0)
+
+    if node['bal'] == 0:  # 当前节点是红色
+        if left_index != -1 and tree[left_index]['bal'] == 0:
+            return False, 0
+        if right_index != -1 and tree[right_index]['bal'] == 0:
+            return False, 0
+
+    return True, current_black_height
+
 if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
     PointMemory = TypedMemory(t_point)
     points = PointMemory()
     
-    IntAVL = TypedAVLTree(np.int32)
-
+    IntRedBlack = TypedRBTree(np.int32)
     
-    points = IntAVL()
-
+    
+    np.random.seed(1)
+    x = np.arange(70000)
+    np.random.shuffle(x)
+    
+    points = IntRedBlack()
+    for i in x: points.push(i)
+    for i in x[::2]: points.pop(i)
+        
+    
+    
+    '''
+    
     @nb.njit
     def push_test(points, x):
         for i in x: points.push(i)
@@ -491,14 +663,15 @@ if __name__ == '__main__':
 
     # np.random.shuffle(x)
     
-    points = IntAVL(10240000+1)
+    points = IntRedBlack(10240000+1)
     push_test(points, x[:3])
     pop_test(points, x[:3])
 
-    points = IntAVL(10240000+1)
+    # 0.32， 0.35
+    points = IntRedBlack(10240000+1)
     a = time()
     push_test(points, x)
     b = time()
     pop_test(points, x)
     print(b-a, time()-b)
-    
+    '''
