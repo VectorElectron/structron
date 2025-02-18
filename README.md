@@ -40,6 +40,9 @@ import structron
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
+# Build two points
+p1, p2 = np.array([(1,1), (2,2)], t_point)
+
 # Define a TypedMemory class for the custom dtype
 PointMemory = structron.TypedMemory(t_point)
 
@@ -47,7 +50,7 @@ PointMemory = structron.TypedMemory(t_point)
 points = PointMemory(10)
 
 # Allocate memory and store a value
-i = points.push((1, 1))  # Returns the index of the allocated slot
+i = points.push(p1)  # Returns the index of the allocated slot
 
 # Access the value at index `i`
 points[i]  # Returns (x=1.0, y=1.0)
@@ -83,6 +86,9 @@ import structron
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
+# Build two points
+p1, p2 = np.array([(1,1), (2,2)], t_point)
+
 # Define a TypedDeque class for the custom dtype
 PointDeque = structron.TypedDeque(t_point)
 
@@ -90,8 +96,8 @@ PointDeque = structron.TypedDeque(t_point)
 points = PointDeque(10)
 
 # Push elements
-points.push_front((1, 1))  # Push to the front
-points.push_back((2, 2))   # Push to the back
+points.push_front(p1)  # Push to the front
+points.push_back(p2)   # Push to the back
 
 # Access elements
 points.first()  # Get the first element
@@ -132,6 +138,9 @@ import structron
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
+# Build two points
+p1, p2 = np.array([(1,1), (2,2)], t_point)
+
 # Define a TypedStack class for the custom dtype
 PointStack = structron.TypedStack(t_point)
 
@@ -139,8 +148,8 @@ PointStack = structron.TypedStack(t_point)
 points = PointStack(10)
 
 # Push elements
-points.push((1, 1))  # Push to the stack
-points.push((2, 2))  # Push another element
+points.push(p1)  # Push to the stack
+points.push(p2)  # Push another element
 
 # Access the top element
 points.top()  # Returns (x=2.0, y=2.0)
@@ -176,6 +185,9 @@ import structron
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
+# Build two points
+p1, p2 = np.array([(1,1), (2,2)], t_point)
+
 # Define a TypedQueue class for the custom dtype
 PointQueue = structron.TypedQueue(t_point)
 
@@ -183,8 +195,8 @@ PointQueue = structron.TypedQueue(t_point)
 points = PointQueue(10)
 
 # Push elements
-points.push((1, 1))  # Add to the queue
-points.push((2, 2))  # Add another element
+points.push(p1)  # Add to the queue
+points.push(p2)  # Add another element
 
 # Access the front element
 points.top()  # Returns (x=1.0, y=1.0)
@@ -366,6 +378,9 @@ import structron
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
+# Build two points
+p1, p2 = np.array([(1,1), (2,2)], t_point)
+
 # Define a TypedRBTree class for int32 keys and point values
 IntPointTree = structron.TypedRBTree(np.int32, t_point)
 
@@ -373,7 +388,7 @@ IntPointTree = structron.TypedRBTree(np.int32, t_point)
 treemap = IntPointTree(10)
 
 # Insert a key-value pair
-treemap.push(1, (1, 1))  # Push key=1, value=(1, 1)
+treemap.push(1, p1)  # Push key=1, value=(1, 1)
 
 # Access the value by key
 treemap[1]  # Returns the value (x=1.0, y=1.0)
@@ -396,11 +411,11 @@ The map mode is supported for the following containers:
 3. Values can be accessed using the key as a subscript: `container[key]`.
 4. Other methods (e.g., `has`, `pop`, `left`, `right`) remain the same as in the non-map mode.
 
-## Ref Mode: `<All>`
+## Eval Mode: `<Heap, RedBlackTree, AVLTree>`
 
-Ref Mode allows containers to store references to data in a shared `TypedMemory` instance. This is useful when working with large or complex data types, or when multiple containers need to share the same memory pool. In this mode, the container only stores integer references, while the actual data resides in the `TypedMemory`.
+The eval mode allows using `Heap`, `RedBlackTree`, and `AVLTree` as None-value containers. The `TypedXXX` function accepts two parameters: the evalue function and the value type. The interface extends the key-map mode by passing None as key, and the eval function would evalue it as key.
 
-### Example Code (Using `RedBlackTree`)
+### Example Code (Using `Heap`)
 
 ```python
 import numpy as np
@@ -410,54 +425,40 @@ import structron
 # Custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
-# Create a TypedMemory instance
-PointMemory = structron.TypedMemory(t_point)
-points = PointMemory(10)
+# Build two points
+p1, p2 = np.array([(1,1), (2,2)], t_point)
 
-# Define a TypedRBTree class for int32 keys and PointMemory references
-IntPointTree = structron.TypedRBTree(np.int32, PointMemory)
+# a simple eval function, self means the heap object
+# we can subclass the TypedHeap, and add some properties, then use them in eval function
+eval = lambda self, p: p.x + p.y
 
-# Instantiate the tree with the shared memory instance
-treeset = IntPointTree(10, memory=points)
+# Define a TypedHeap class for point values with eval function
+PointHeap = structron.TypedHeap(eval, t_point)
 
-# Insert a key-value pair
-treeset.push(1, (1, 1))  # Push key=1, value=(1, 1) into the shared memory
+# Instantiate a heap with capacity of 10
+heap = PointHeap(10)
 
-# Check if a key exists
-treeset.has(1)  # Returns True if the key is present
+# Insert 2 points
+heap.push(None, p1)
+heap.push(None, p2)
 
-# Remove a key-value pair
-treeset.pop(1)  # Removes the key and its associated value from the shared memory
+# Get the top element
+heap.top()
 
-# Access neighbors
-treeset.left(1)  # Returns the left neighbor of the key
-treeset.right(1) # Returns the right neighbor of the key
-
-# Get container size
-treeset.size  # Current number of elements in the tree
-len(treeset)  # Same as `size`
+# Other methods are the same as the map mode
 ```
 
-### Key Features of Ref Mode
-1. **Shared Memory**: Multiple containers can share the same `TypedMemory` instance.
-2. **Efficient Storage**: Containers only store integer references, reducing memory overhead.
-3. **Complex Data Types**: Ideal for large or complex data structures where direct storage is inefficient.
-4. **Multi-Container Collaboration**: Enables multiple containers to work on the same data pool.
-
-### Usage Notes
-- Replace the `dtype` parameter in `TypedXXX` with a `TypedMemory` instance.
-- Pass the `TypedMemory` instance to the container during initialization using the `memory` parameter.
-- The `push` method stores the value in the shared `TypedMemory` and associates it with the key.
-- The `pop` method removes the key and its associated value from the shared memory.
-- Other methods (e.g., `has`, `left`, `right`) work as in the non-ref mode.
-
 ### Supported Containers
-Ref Mode is supported for all containers:
-- **Heap**: `TypedHeap(key_dtype, TypedMemory)`
-- **Hash**: `TypedHash(key_dtype, TypedMemory)`
-- **RedBlackTree**: `TypedRBTree(key_dtype, TypedMemory)`
-- **AVLTree**: `TypedAVLTree(key_dtype, TypedMemory)`
 
+The map mode is supported for the following containers:
+- **Heap**: `TypedHeap(key_dtype, value_dtype)`
+- **RedBlackTree**: `TypedRBTree(key_dtype, value_dtype)`
+- **AVLTree**: `TypedAVLTree(key_dtype, value_dtype)`
+
+### Differences from Map Mode
+If the `eval` function is static (i.e., the evaluation result does not change over time), it is recommended to precompute the keys and use **Map Mode** instead. This approach is more efficient because the keys are calculated once and reused, avoiding repeated evaluations during container operations.
+
+In contrast, **Eval Mode** dynamically evaluates values during container adjustments. For example, in a Red-Black Tree, the tree does not reorder all values when a new value is pushed. Instead, the new value is dynamically compared with relevant elements as needed. This is particularly useful in scenarios like the event queue in computational geometry (e.g., sweep line algorithms), where values need to be dynamically evaluated and ordered based on changing conditions.
 
 ### More Container
 More containers will be implemented successively. Welcome to provide suggestions or participate in project development.
@@ -473,6 +474,8 @@ Algorithm Implementation:
 4. Combine the upper and lower halves to obtain the convex hull.
 
 ```python
+import matplotlib.pyplot as plt
+
 import numpy as np
 import numba as nb
 import structron
@@ -495,7 +498,7 @@ def convex_line(pts, idx):
             s += p2.x*p0.y - p2.y*p0.x
             if s<-1e-6: break
             hull.pop()
-        hull.push((p2.x, p2.y))
+        hull.push(p2)
     return hull.body[:hull.size]
 
 # get up line and down line, then concat the hull

@@ -23,7 +23,7 @@ def convex_line(pts, idx):
             s += p2.x*p0.y - p2.y*p0.x
             if s<-1e-6: break
             hull.pop()
-        hull.push((p2.x, p2.y))
+        hull.push(p2)
     return hull.body[:hull.size]
 
 # get up line and down line, then concat the hull
@@ -40,6 +40,7 @@ if __name__ == '__main__':
     pts = np.random.randn(102400,2).astype(np.float32)
     pts = pts.ravel().view(t_point)
 
+    
     hull = convexhull(pts)
     start = time()
     hull = convexhull(pts)

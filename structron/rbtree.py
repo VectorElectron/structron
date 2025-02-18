@@ -1,12 +1,13 @@
 import numpy as np
 import numba as nb
-from .memory import sub_class, TypedMemory
-import inspect
 
-class RBTree: # [rep] RBTree->TypedRBTree
-    def __init__(self, cap=128, ktype=np.int32, vtype=None): # [rep] , ktype=np.int32, vtype=None->
-        self.idx = np.zeros(cap, dtype=ilr)
-        self.body = np.zeros(cap, dtype=vtype) # [if map]
+mode = 'map'
+
+class RBTree:
+    def __init__(self, ktype=np.int32, vtype=None, cap=16):
+        self.idx = np.zeros(cap, dtype=ktype)
+        if mode!='set':
+            self.body = np.zeros(cap, dtype=vtype)
         self.idx.id[:] = np.arange(1, cap+1, dtype=np.int32)
         # for i in range(cap): self.idx[i].id = i+1
         self.root = -1
@@ -20,9 +21,10 @@ class RBTree: # [rep] RBTree->TypedRBTree
         self.dir = np.zeros(256, dtype=np.int32)
 
     def expand(self):
-        idx = np.zeros(self.cap*2, dtype=ilr)
+        idx = np.zeros(self.cap*2, dtype=self.idx.dtype)
         idx.id[:] = np.arange(1, self.cap*2+1, dtype=np.int32)
-        self.body = np.concatenate((self.body, self.body)) # [if map]
+        if mode!='set':
+            self.body = np.concatenate((self.body, self.body))
         
         idx[:self.cap] = self.idx
         self.idx = idx
@@ -30,24 +32,29 @@ class RBTree: # [rep] RBTree->TypedRBTree
         self.cap *= 2
         self.tail = self.cap - 1
 
-    def push(self, key, val=None):
+    def push(self, k, v=None):
         cur = parent = self.root
         
         if cur==-1:
-            self.root = self.alloc(key, val)
+            self.root = self.alloc(k, v)
             self.idx[self.root].bal = 1 # new black root
             return
 
         idx = self.idx
         hist = self.hist
         dir = self.dir
+        if mode=='func':
+            body = self.body
+            key = self.eval(v)
+        if mode!='func': key = k
         n = 0
         
         while cur != -1:
             ilrk = idx[cur]
-            ck = ilrk.key
+            if mode!='func': ck = ilrk.key
+            if mode=='func': ck = self.eval(body[cur])
             if key == ck:
-                self.body[cur] = val # [if map][attr] self.body[cur]<-val
+                if mode!='set': self.body[cur] = v
                 return
             
             hist[n] = cur
@@ -59,7 +66,7 @@ class RBTree: # [rep] RBTree->TypedRBTree
                 dir[n] = 1
             n += 1
         
-        hist[n] = self.alloc(key, val)
+        hist[n] = self.alloc(k, v)
         idx = self.idx
         
         pnode = idx[hist[n-1]]
@@ -146,13 +153,15 @@ class RBTree: # [rep] RBTree->TypedRBTree
         hist = self.hist
         dir = self.dir
         idx = self.idx
-        body = self.body # [if map]
+        if mode!='set':
+            body = self.body
         n = 0
 
         # find the node
         while cur!=-1:
             ilrk = idx[cur]
-            ck = ilrk.key
+            if mode!='func': ck = ilrk.key
+            if mode=='func': ck = self.eval(body[cur])
             hist[n] = cur
             if key == ck:
                 break
@@ -170,7 +179,8 @@ class RBTree: # [rep] RBTree->TypedRBTree
         if cur == -1: return # not found
 
         node = idx[cur]
-        value = body[cur] # [if map]
+        if mode != 'set':
+            value = body[cur] # [if map]
         
         # pnode = idx[hist[n-1]]
         
@@ -187,8 +197,9 @@ class RBTree: # [rep] RBTree->TypedRBTree
                 # print(idx[hist[n]].key, dir[n])
                 n += 1
                 scur = snode.left
-            node.key = snode.key
-            body[cur] = body[scur] # [if map]
+            if mode!='func': node.key = snode.key
+            if mode!='set':
+                body[cur] = body[scur] # [if map]
             cur = scur
             node = snode
         
@@ -196,18 +207,18 @@ class RBTree: # [rep] RBTree->TypedRBTree
 
         # del black node with one red child
         if node.left != -1:
-            node.key = idx[node.left].key
-            body[cur] = body[node.left] # [if map]
+            if mode!='func': node.key = idx[node.left].key
+            if mode!='set': body[cur] = body[node.left]
             self.free(node.left)
             node.left = -1
-            return value # [if map]
+            if mode!='set': return value # [if map]
             return
         elif node.right != -1:
-            node.key = idx[node.right].key
-            body[cur] = body[node.right] # [if map]
+            if mode!='func': node.key = idx[node.right].key
+            if mode!='set': body[cur] = body[node.right]
             self.free(node.right)
             node.right = -1
-            return value # [if map]
+            if mode!='set': return value # [if map]
             return
         else:
             if n==0: self.root = -1
@@ -355,26 +366,30 @@ class RBTree: # [rep] RBTree->TypedRBTree
             if stop: break
 
         self.free(deln)
-        return value # [if map]
+        if mode!='set': return value
 
     def get(self, key):
         cur = self.root
+        idx = self.idx
+        if mode!='set': body = self.body
         while cur != -1:
-            node = self.idx[cur]
-            ck = node.key
+            node = idx[cur]
+            if mode!='func': ck = node.key
+            if mode=='func': ck = self.eval(body[cur])
             if key == ck:
-                return self.body[cur] # [if map]
+                if mode!='set': return body[cur]
                 return cur
             if key < ck: cur = node.left
             if key > ck: cur = node.right
 
     def has(self, key):
         cur = self.root
+        if mode!='set': body = self.body
         while cur != -1:
             node = self.idx[cur]
-            ck = node.key
-            if key == ck:
-                return True
+            if mode!='func': ck = node.key
+            if mode=='func': ck = self.eval(body[cur])
+            if key == ck: return True
             if key < ck: cur = node.left
             if key > ck: cur = node.right
         return False
@@ -385,11 +400,15 @@ class RBTree: # [rep] RBTree->TypedRBTree
         dir = self.dir
         n = 0
         idx = self.idx
+        if mode=='func':
+            body = self.body
         
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
-            ck = ilrk.key
+            if mode!='func': ck = ilrk.key
+            if mode=='func': ck = self.eval(body[cur])
+            
             if key == ck: break
             if key < ck: # left
                 hist[n] = cur
@@ -408,13 +427,15 @@ class RBTree: # [rep] RBTree->TypedRBTree
                 lnode = idx[nxt]
                 if lnode.right==-1:
                     # return self.body[nxt] # [if map]
-                    return lnode.key
+                    if mode!='func': return lnode.key
+                    return self.eval(body[nxt])
                 nxt = lnode.right
         else:
             for i in range(n-1, -1, -1):
                 if dir[i]==1:
                     # return self.body[hist[i]] # [if map]
-                    return idx[hist[i]].key
+                    if mode!='func': return idx[hist[i]].key
+                    return self.eval(body[hist[i]])
 
     def right(self, key):
         cur = parent = self.root
@@ -422,11 +443,15 @@ class RBTree: # [rep] RBTree->TypedRBTree
         dir = self.dir
         n = 0
         idx = self.idx
+        if mode=='func':
+            body = self.body
         
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
-            ck = ilrk.key
+            if mode!='func': ck = ilrk.key
+            if mode=='func': ck = self.eval(body[cur])
+            
             if key == ck: break
             if key < ck: # left
                 hist[n] = cur
@@ -445,13 +470,15 @@ class RBTree: # [rep] RBTree->TypedRBTree
                 lnode = idx[nxt]
                 if lnode.left==-1:
                     # return self.body[nxt] # [if map]
-                    return lnode.key
+                    if mode!='func': return lnode.key
+                    return self.eval(body[nxt])
                 nxt = lnode.left
         else:
             for i in range(n-1, -1, -1):
                 if dir[i]==-1:
                     # return self.body[hist[i]] # [if map]
-                    return idx[hist[i]].key
+                    if mode!='func': return idx[hist[i]].key
+                    return self.eval(body[hist[i]])
         
     def alloc(self, key, val=None):
         if self.size == self.cap:
@@ -461,12 +488,14 @@ class RBTree: # [rep] RBTree->TypedRBTree
         cur = self.cur
         
         self.cur = self.idx[cur].id
-        self.body[cur] = val # [if map][attr] self.body[cur]<-val
+        if mode!='set': self.body[cur] = val
+        
         ilrk = self.idx[cur]
         ilrk.left = -1
         ilrk.right = -1
-        ilrk.key = key
         ilrk.bal = 0
+        if mode!='func': ilrk.key = key
+        
         return cur
     
     def __getitem__(self, key):
@@ -490,78 +519,37 @@ class RBTree: # [rep] RBTree->TypedRBTree
         self.size -= 1
         self.idx[self.tail].id = idx
         self.tail = idx
-        return self.body[idx] # [if map]
+        if mode!='set':
+            return self.body[idx] # [if map]
 
-def type_rb(ktype, vtype=None):
-    ilr = np.dtype([('id', np.int32), ('left', np.int32), ('right', np.int32),
-                ('key', ktype), ('bal', np.int8)])
+def istype(obj):
+    if isinstance(obj, np.dtype): return True
+    return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
+
+def TypedRBTree(ktype, vtype=None):
+    global mode
+    if not istype(ktype): mode = 'func'
+    elif vtype is None: mode = 'set'
+    else: mode = 'map'
+
+    dtype = [('id', np.int32), ('left', np.int32),
+        ('right', np.int32), ('key', ktype), ('bal', np.int8)]
+    if mode=='func': dtype.pop(-2)
+    ilr = np.dtype(dtype)
+    
     
     fields = [('idx', nb.from_dtype(ilr)[:]), ('root', nb.int32), ('cur', nb.int32),
               ('cap', nb.uint32), ('size', nb.uint32), ('tail', nb.uint32),
               ('hist', nb.int32[:]), ('dir', nb.int32[:])]
-
     if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
-    
-    local = {'ilr':ilr, 'vtype':vtype, 'ktype':ktype, 'np':np}
 
-    subavl = sub_class(RBTree, vtype, map=vtype is not None)
-    # print(subavl)
-    exec(subavl, local)
-    TypedRBTree = local['TypedRBTree']
+    class TypedRBTree(RBTree):
+        _init_ = RBTree.__init__
+        if mode=='func': eval = ktype
+        def __init__(self, cap=16):
+            self._init_(ilr, vtype, cap)
+    
     return nb.experimental.jitclass(fields)(TypedRBTree)
-
-class MemoryRBTree:
-    def __init__(self, cap=128, memory=None):
-        self.avl = IntRBTree(cap)
-        self.memory = memory if memory is not None else typememory(cap)
-
-    def push(self, key, val):
-        self.avl.push(key, self.memory.push(val))
-
-    def pop(self, key):
-        idx = self.avl.pop(key)
-        if idx is None: return
-        return self.memory.pop(int(idx))
-
-    def get(self, key):
-        idx = self.avl.get(key)
-        if idx is None: return
-        return self.memory.body[int(idx)]
-
-    def has(self, key): return self.avl.has(key)
-
-    def left(self, key): return self.avl.left(key)
-
-    def right(self, key): return self.avl.right(key)
-    
-    def __getitem__(self, key):
-        return self.get(key)
-
-    def __setitem__(self, key, val): 
-        self.push(key, val)
-    
-    def __len__(self):
-        return self.avl.size
-
-    @property
-    def size(self): return self.avl.size
-
-def memory_rb(ktype, typememory):
-    IntRBTree = type_rb(ktype, np.int32)
-    local = {'typememory': typememory, 'IntRBTree': IntRBTree}
-    memoryavl = sub_class(MemoryRBTree, None)
-    # print(memorydeque)
-
-    exec(memoryavl, local)
-    TypedRBTree = local['MemoryRBTree']
-    fields = [('avl', IntRBTree.class_type.instance_type),
-              ('memory', typememory.class_type.instance_type)]
-    return nb.experimental.jitclass(fields)(TypedRBTree)
-
-def TypedRBTree(ktype, dtype=None):
-    if hasattr(dtype, 'class_type'):
-        return memory_rb(ktype, dtype)
-    else: return type_rb(ktype, dtype)
     
 def print_tree(tree, mar=4, bal=False):
     nodes = [tree.root]
@@ -630,12 +618,14 @@ def check_valid(tree, index=0, first=True):
 if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-    PointMemory = TypedMemory(t_point)
-    points = PointMemory()
     
-    IntRedBlack = TypedRBTree(np.int32)
+    PointRB = TypedRBTree(lambda self, p: p.x+p.y, t_point)
+    points = PointRB()
+
+    points.push(None, np.void((1,1), t_point))
+    points.push(None, np.void((2,3), t_point))
     
-    
+    '''
     np.random.seed(1)
     x = np.arange(70000)
     np.random.shuffle(x)
@@ -643,10 +633,7 @@ if __name__ == '__main__':
     points = IntRedBlack()
     for i in x: points.push(i)
     for i in x[::2]: points.pop(i)
-        
-    
-    
-    '''
+
     
     @nb.njit
     def push_test(points, x):
@@ -658,7 +645,7 @@ if __name__ == '__main__':
         
     
     np.random.seed(42)
-    x = np.arange(10240000)
+    x = np.arange(1024000)
     np.random.shuffle(x)
 
     # np.random.shuffle(x)

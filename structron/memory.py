@@ -2,7 +2,7 @@ import numpy as np
 import numba as nb
 
 class Memory: # [rep] Memory->TypedMemory
-    def __init__(self, cap=128, dtype=np.uint32): # [rep] , dtype=np.uint32->
+    def __init__(self, dtype, cap=128): # [rep] , dtype=np.uint32->
         self.idx = np.arange(1, cap+1, dtype=np.int32)
         self.cur = 0 # next blank
         self.cap = cap
@@ -42,7 +42,7 @@ class Memory: # [rep] Memory->TypedMemory
         self.idx[self.tail] = idx
         self.tail = idx
         return self.body[idx]
-
+'''
 import inspect
 def sub_class(cls, dtype, **key):
     names = dtype.names if hasattr(dtype, 'names') else None
@@ -74,30 +74,28 @@ def sub_class(cls, dtype, **key):
                 line = prefix + ','.join(line) + ' = '+ b
         lines.append(line)
     return '\n'.join(lines)
-
+'''
 def TypedMemory(dtype):
     fields = [('idx', nb.int32[:]), ('cur', nb.int32),
               ('cap', nb.uint32), ('size', nb.uint32),
               ('tail', nb.uint32), ('body', nb.from_dtype(dtype)[:])]
     
-    # def push(memory, x, y):
-    local = {'dtype':dtype, 'np':np}
-
-    submemory = sub_class(Memory, dtype)
-    # print(submemory)
-    exec(submemory, local)
-    TypedMemory = local['TypedMemory']
+    class TypedMemory(Memory):
+        _init_ = Memory.__init__
+        def __init__(self, cap=128):
+            self._init_(dtype, cap)
     return nb.experimental.jitclass(fields)(TypedMemory)
 
 if __name__ == '__main__':
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
+    
     PointMemory = TypedMemory(t_point)
 
     aaaa
     IntMemory = TypedMemory(np.uint32)
     points = PointMemory(2)
     lst = IntMemory(2)
-    aaaa
+    
     @nb.njit
     def test(points):
         for i in range(10240000):

@@ -1,106 +1,106 @@
 import numba as nb
 import numpy as np
 
-from .memory import TypedMemory, sub_class
+mode = 'set'
 
-class Hash: # [rep] Hash->TypedHash
-    def __init__(self, cap=16, ktype=np.int32, vtype=None): # [rep] , ktype=np.int32, vtype=None->
+class Hash:
+    def __init__(self, ktype=np.int32, vtype=None, cap=16):
         self.cap = cap
         self.size = 0
         # 0:blank, 1:has, 2:removed
-        self.msk = np.zeros(cap, dtype=np.uint8)
-        self.key = np.zeros(cap, dtype=ktype)
-        self.body = np.zeros(cap, dtype=vtype) # [if map]
+        # self.msk = np.zeros(cap, dtype=np.uint8)
+        self.idx = np.zeros(cap, dtype=ktype)
+        if mode=='map':
+            self.body = np.zeros(cap, dtype=vtype)
     
     # insert at 0 or 2
     def push(self, obj, value=None):
         cap = self.cap
         k = 31*hash(obj)%cap
-        msk = self.msk
-        key = self.key
+        # msk = self.msk
+        idx = self.idx
         for i in range(cap):
             cur = (k+i)%cap
-            if msk[cur]!=1: break
-            if key[cur]==obj: return False
+            if idx[cur].msk!=1: break
+            if idx[cur].key==obj: return
+        
         # if i>100: print(i, cap, self.size/cap)
-        key[cur] = obj
-        self.body[cur] = value # [if map][attr] self.body[cur]<-value
-        msk[cur] = 1
+        idx[cur].key = obj
+        if mode == 'map':
+            self.body[cur] = value
+        idx[cur].msk = 1
         self.size += 1
         if self.size > cap*2/3:
             self.expand()
-        return True
     
     def has(self, obj):
         cap = self.cap
         k = 31*hash(obj)%cap
-        msk = self.msk
-        key = self.key
+        idx = self.idx
         for i in range(cap):
             cur = (k+i)%cap
-            if msk[cur]==0: return False
-            if msk[cur]==2: continue
-            if key[cur]==obj: return True
+            if idx[cur].msk==0: return False
+            if idx[cur].msk==2: continue
+            if idx[cur].key==obj: return True
         return False
 
     def pop(self, obj):
         cap = self.cap
         k = 31*hash(obj)%cap
-        msk = self.msk
-        key = self.key
+        idx = self.idx
         
         for i in range(cap):
             cur = (k+i)%cap
-            if msk[cur]==0: return
-            if msk[cur]==2: continue
-            if key[cur]==obj:
-                msk[cur] = 2
+            if idx[cur].msk==0: return
+            if idx[cur].msk==2: continue
+            if idx[cur].key==obj:
+                idx[cur].msk = 2
                 self.size -= 1
-                return self.body[cur] # [if map]
+                if mode=='map':
+                    return self.body[cur]
                 return None
         return
 
     def get(self, obj):
         cap = self.cap
         k = 31*hash(obj)%cap
-        msk = self.msk
-        key = self.key
+        idx = self.idx
         
         for i in range(cap):
             cur = (k+i)%cap
-            if msk[cur]==0: return
-            if msk[cur]==2: continue
-            if key[cur]==obj:
-                return self.body[cur] # [if map]
-                return None
+            if idx[cur].msk==0: return
+            if idx[cur].msk==2: continue
+            if idx[cur].key==obj:
+                if mode=='map':
+                    return self.body[cur]
+                return
         return
     
     def expand(self):
         # print('in')
-        omsk = self.msk
-        okey = self.key
-        obody = self.body # [if map]
+        oidx = self.idx
+        if mode=='map':
+            obody = self.body
         cap = self.cap * 2
         self.cap = cap
         self.size = 0
-        msk = np.zeros(cap, dtype=np.uint8)
-        key = np.zeros(cap, dtype=okey.dtype)
-        body = np.zeros(cap, dtype=obody.dtype) # [if map]
+        idx = np.zeros(cap, dtype=oidx.dtype)
+        if mode=='map':
+            body = np.zeros(cap, dtype=obody.dtype)
         for i in range(cap//2):
-            if omsk[i]!=1: continue
-            obj = okey[i]
+            if oidx[i].msk!=1: continue
+            obj = oidx[i].key
             cap = self.cap
             k = 31*hash(obj)%cap
             for j in range(cap):
                 cur = (k+j)%cap
-                if msk[cur]!=1: break
-            key[cur] = obj
-            msk[cur] = 1
-            body[cur] = obody[i] # [if map]
+                if idx[cur].msk!=1: break
+            idx[cur].key = obj
+            idx[cur].msk = 1
+            if mode=='map': body[cur] = obody[i]
             self.size += 1
-        self.msk = msk
-        self.key = key
-        self.body = body # [if map]
+        self.idx = idx
+        if mode=='map': self.body = body
         # print(self.cap, 'out')
 
     def __getitem__(self, key):
@@ -111,65 +111,26 @@ class Hash: # [rep] Hash->TypedHash
     
     def __len__(self):
         return self.size
-    
+
     def toarray(self):
-        return self.key[self.msk==1]
+        return self.idx.key[self.idx.msk==1]
 
-class MemoryHash:
-    def __init__(self, cap=128, memory=None):
-        self.hash = IntHash(cap)
-        self.memory = memory if memory is not None else typememory(cap)
+def TypedHash(ktype, vtype=None):
+    global mode
+    mode = 'set' if vtype is None else 'map'
 
-    def push(self, key, value):
-        self.hash.push(key, self.memory.push(value))
-
-    def pop(self, key):
-        idx = self.hash.pop(key)
-        if idx is None: return
-        return self.memory.pop(int(idx))
-
-    def get(self, key):
-        idx = self.hash.get(key)
-        if idx is None: return
-        return self.memory.body[int(idx)]
-
-    def __getitem__(self, key):
-        return self.get(key)
-
-    def __setitem__(self, key, val): 
-        self.push(key, val)
-    
-    def __len__(self):
-        return self.hash.size 
-
-def type_hash(ktype, vtype=None):
+    key = np.dtype([('msk', np.uint8), ('key', ktype)])
     fields = [('cap', nb.uint32), ('size', nb.uint32),
-              ('msk', nb.uint8[:]), ('key', nb.from_dtype(ktype)[:])]
-    if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
+              ('idx', nb.from_dtype(key)[:])]
     
-    local = {'ktype':ktype, 'vtype':vtype, 'np':np}
-    typedhashset = sub_class(Hash, vtype, map=vtype is not None)
-    # print(typedhashset)
-    exec(typedhashset, local)
-    TypedHash = local['TypedHash']
-    if vtype is None: del TypedHash.get
+    if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
+
+    class TypedHash(Hash):
+        _init_ = Hash.__init__
+        def __init__(self, cap):
+            self._init_(key, vtype, cap)
+    
     return nb.experimental.jitclass(fields)(TypedHash)
-
-def memory_hash(ktype, typememory):
-    IntHash = type_hash(ktype, np.int32)
-    local = {'typememory':typememory, 'IntHash':IntHash}
-    memoryhash = sub_class(MemoryHash, None)
-
-    exec(memoryhash, local)
-    TypedHash = local['MemoryHash']
-    fields = [('hash', IntHash.class_type.instance_type),
-              ('memory', typememory.class_type.instance_type)]
-    return nb.experimental.jitclass(fields)(TypedHash)
-
-def TypedHash(ktype, dtype=None):
-    if hasattr(dtype, 'class_type'):
-        return memory_hash(ktype, dtype)
-    else: return type_hash(ktype, dtype)
     
 def print_hash(hs):
     for m,v in zip(hs.msk, hs.key):
@@ -179,11 +140,12 @@ if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
-    PointHash = TypedHash(np.dtype('<8U'), t_point)
-    points = PointHash(128)
-    points['p1'] = (1,5)
-    points['p2'] = (3,3)
-
+    PointHash = TypedHash(np.float32, t_point)
+    points = PointHash(4)
+    points[1] = np.void((1,1), t_point)
+    points[2] = np.void((2,2), t_point)
+    abcd
+    
     '''
     StrMemory = TypedMemory(np.dtype('<8U'))
 
