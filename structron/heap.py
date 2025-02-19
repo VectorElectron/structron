@@ -99,12 +99,15 @@ class Heap:
 def istype(obj):
     if isinstance(obj, np.dtype): return True
     return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
-
+                 
 def TypedHeap(ktype, vtype=None):
+    import inspect
     global mode
     if not istype(ktype): mode = 'func'
     elif vtype is None: mode = 'set'
     else: mode = 'map'
+    
+    exec(inspect.getsource(Heap), dict(globals()), locals())
     
     fields = [('size', nb.uint32), ('cap', nb.uint32)]
     if mode in {'set', 'map'}:
@@ -113,22 +116,30 @@ def TypedHeap(ktype, vtype=None):
         fields += [
               ('body', nb.from_dtype(vtype)[:]),
               ('buf', nb.from_dtype(vtype)[:])]
-    
-    class TypedHeap(Heap):
+                
+    class TypedHeap(locals()['Heap']):
         _init_ = Heap.__init__
         if mode=='func': eval = ktype
         def __init__(self, cap):
             self._init_(None if mode=='func' else ktype, vtype, cap)
-
-    return nb.experimental.jitclass(fields)(TypedHeap)  
-
+    
+    return nb.experimental.jitclass(fields)(TypedHeap)
     
 if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
+
+    p1, p2 = np.array([(1,1), (2,2)], dtype=t_point)
     
-    PointHeap = TypedHeap(lambda self, x:x.x, t_point)
+    PointHeap = TypedHeap(np.float32, t_point)
     points = PointHeap(128)
+    # points.push(1, np.void((1,1), t_point))
+    
+    IntHeap = TypedHeap(np.int32)
+    ints = IntHeap(128)
+    
+    
+    abcd
     
     points.push(None, np.void((5,5), dtype=t_point))
     points.push(None, np.void((6,6), dtype=t_point))

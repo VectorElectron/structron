@@ -116,6 +116,7 @@ class Hash:
         return self.idx.key[self.idx.msk==1]
 
 def TypedHash(ktype, vtype=None):
+    import inspect
     global mode
     mode = 'set' if vtype is None else 'map'
 
@@ -125,7 +126,9 @@ def TypedHash(ktype, vtype=None):
     
     if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
 
-    class TypedHash(Hash):
+    exec(inspect.getsource(Hash), dict(globals()), locals())
+    
+    class TypedHash(locals()['Hash']):
         _init_ = Hash.__init__
         def __init__(self, cap):
             self._init_(key, vtype, cap)

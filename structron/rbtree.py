@@ -527,6 +527,7 @@ def istype(obj):
     return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
 
 def TypedRBTree(ktype, vtype=None):
+    import inspect
     global mode
     if not istype(ktype): mode = 'func'
     elif vtype is None: mode = 'set'
@@ -543,7 +544,9 @@ def TypedRBTree(ktype, vtype=None):
               ('hist', nb.int32[:]), ('dir', nb.int32[:])]
     if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
 
-    class TypedRBTree(RBTree):
+    exec(inspect.getsource(RBTree), dict(globals()), locals())
+    
+    class TypedRBTree(locals()['RBTree']):
         _init_ = RBTree.__init__
         if mode=='func': eval = ktype
         def __init__(self, cap=16):

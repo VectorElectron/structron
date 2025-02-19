@@ -56,12 +56,15 @@ class Deque:
     def __len__(self): return self.size
 
 def type_deque(dtype, typemode='deque'):
+    import inspect
     global mode; mode = typemode
     fields = [('head', nb.int32), ('tail', nb.int32),
           ('cap', nb.uint32), ('size', nb.uint32),
           ('body', nb.from_dtype(dtype)[:])]
 
-    class TypedDeque(Deque):
+    exec(inspect.getsource(Deque), dict(globals()), locals())
+    
+    class TypedDeque(locals()['Deque']):
         _init_ = Deque.__init__
         def __init__(self, cap=16):
             self._init_(dtype, cap)

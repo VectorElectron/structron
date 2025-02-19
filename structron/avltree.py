@@ -398,6 +398,7 @@ def istype(obj):
     return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
 
 def TypedAVLTree(ktype, vtype=None):
+    import inspect
     global mode
     if not istype(ktype): mode = 'func'
     elif vtype is None: mode = 'set'
@@ -413,8 +414,10 @@ def TypedAVLTree(ktype, vtype=None):
               ('cap', nb.uint32), ('size', nb.uint32), ('tail', nb.uint32),
               ('hist', nb.int32[:]), ('dir', nb.int32[:])]
     if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
-
-    class TypedAVLTree(AVLTree):
+    
+    exec(inspect.getsource(AVLTree), dict(globals()), locals())
+    
+    class TypedAVLTree(locals()['AVLTree']):
         _init_ = AVLTree.__init__
         if mode=='func': eval = ktype
         def __init__(self, cap=16):
@@ -489,8 +492,10 @@ if __name__ == '__main__':
     PointAVL = TypedAVLTree(lambda self, p: p.x+p.y, t_point)
     points = PointAVL()
 
-    IntAVL = TypedAVLTree(np.int32)
+    IntAVL = TypedAVLTree(np.int32, np.int32)
+    ints = IntAVL()
     
+    abcd
     @nb.njit
     def push_test(points, x):
         for i in x: points.push(i)
