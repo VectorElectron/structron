@@ -5,9 +5,11 @@ mode = 'map'
 
 class AVLTree:
     def __init__(self, ktype=np.int32, vtype=None, cap=16):
+        # [attr]
         self.idx = np.zeros(cap, dtype=ktype)
         if mode!='set':
             self.body = np.zeros(cap, dtype=vtype)
+            self.buf = np.zeros(1, dtype=vtype)
         self.idx.id[:] = np.arange(1, cap+1, dtype=np.int32)
         # for i in range(cap): self.idx[i].id = i+1
         self.root = -1
@@ -36,7 +38,7 @@ class AVLTree:
         cur = parent = self.root
         if cur==-1:
             self.root = self.alloc(k, v)
-            return
+            return self.root
         
         idx = self.idx
         hist = self.hist
@@ -54,7 +56,7 @@ class AVLTree:
             if mode=='func': ck = self.eval(body[cur])
             if key == ck:
                 if mode!='set': self.body[cur] = v
-                return
+                return cur
             
             hist[n] = cur
             if key < ck:
@@ -65,7 +67,7 @@ class AVLTree:
                 dir[n] = 1
             n += 1
         
-        hist[n] = self.alloc(k, v)
+        cur = hist[n] = self.alloc(k, v)
         idx = self.idx
         pnode = idx[hist[n-1]]
 
@@ -84,6 +86,7 @@ class AVLTree:
                 self.rotate(hist[i-1], dir[i-1],
                     hist[i], dir[i], hist[i+1], dir[i+1], hist[i+2])
                 break
+        return cur
     
     def pop(self, key):
         parent = -1
@@ -109,16 +112,14 @@ class AVLTree:
             if key > ck:
                 cur = ilrk.right
                 dir[n] = 1
-
-            # print(idx[hist[n]].key, dir[n])
+            
             n += 1
-        
-        # for i in hist[:n+1]: print(idx[i].key)
+
+        # hist[n] is the node
         if cur == -1: return # not found
 
         node = idx[cur]
-        if mode!='set':
-            value = body[cur]
+        if mode!='set': self.buf[0] = body[cur]
         
         # pnode = idx[hist[n-1]]
         
@@ -137,7 +138,7 @@ class AVLTree:
                 scur = snode.left
             if mode!='func': node.key = snode.key
             if mode!='set':
-                body[cur] = body[scur] # [if map]
+                body[cur] = body[scur]
             cur = scur
             node = snode
             
@@ -178,8 +179,7 @@ class AVLTree:
                 self.rotate(hist[i-1], dir[i-1],
                     hist[i], -dir[i], i2, n2.bal, i3)
                 if stop: break
-        if mode!='set':
-            return self.body[cur] # [if map]
+        if mode!='set': return self.buf[0]
     
     def rotate(self, i0, b0, i1, b1, i2, b2, i3):
         idx = self.idx
@@ -239,7 +239,7 @@ class AVLTree:
         elif b0==1: n0.right = nroot
         return b2 == 0
 
-    def get(self, key):
+    def index(self, key):
         cur = self.root
         idx = self.idx
         if mode!='set': body = self.body
@@ -247,110 +247,82 @@ class AVLTree:
             node = idx[cur]
             if mode!='func': ck = node.key
             if mode=='func': ck = self.eval(body[cur])
-            if key == ck:
-                if mode!='set': return body[cur]
-                return cur
+            if key == ck: return cur
+            # if mode!='set': return body[cur]
+            # return cur
             if key < ck: cur = node.left
             if key > ck: cur = node.right
+        return -1
 
     def has(self, key):
-        cur = self.root
-        if mode!='set': body = self.body
-        while cur != -1:
-            node = self.idx[cur]
-            if mode!='func': ck = node.key
-            if mode=='func': ck = self.eval(body[cur])
-            if key == ck: return True
-            if key < ck: cur = node.left
-            if key > ck: cur = node.right
-        return False
+        return self.index(key) >= 0
 
     def left(self, key):
-        cur = parent = self.root        
-        hist = self.hist
-        dir = self.dir
-        n = 0
+        cur = self.root
         idx = self.idx
-        if mode=='func':
-            body = self.body
         
+        if mode=='func': body = self.body
+
+        rst = -1
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
             if mode!='func': ck = ilrk.key
             if mode=='func': ck = self.eval(body[cur])
             
-            if key == ck: break
-            if key < ck: # left
-                hist[n] = cur
-                dir[n] = -1
+            if key <= ck: # left
                 cur = ilrk.left
             if key > ck: # right
-                hist[n] = cur
-                dir[n] = 1
+                rst = cur
                 cur = ilrk.right
-            n += 1
-        if cur == -1: return
-        node = idx[cur]
-        if node.left != -1:
-            nxt = node.left
-            while True:
-                lnode = idx[nxt]
-                if lnode.right==-1:
-                    # return self.body[nxt] # [if map]
-                    if mode!='func': return lnode.key
-                    return self.eval(body[nxt])
-                nxt = lnode.right
-        else:
-            for i in range(n-1, -1, -1):
-                if dir[i]==1:
-                    # return self.body[hist[i]] # [if map]
-                    if mode!='func': return idx[hist[i]].key
-                    return self.eval(body[hist[i]])
+        return rst
 
     def right(self, key):
-        cur = parent = self.root
-        hist = self.hist
-        dir = self.dir
-        n = 0
+        cur = self.root
         idx = self.idx
-        if mode=='func':
-            body = self.body
         
+        if mode=='func': body = self.body
+
+        rst = -1
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
             if mode!='func': ck = ilrk.key
             if mode=='func': ck = self.eval(body[cur])
             
-            if key == ck: break
             if key < ck: # left
-                hist[n] = cur
-                dir[n] = -1
+                rst = cur
                 cur = ilrk.left
-            if key > ck: # right
-                hist[n] = cur
-                dir[n] = 1
+            if key >= ck: # right
                 cur = ilrk.right
-            n += 1
-        if cur == -1: return
-        node = idx[cur]
-        if node.right != -1:
-            nxt = node.right
-            while True:
-                lnode = idx[nxt]
-                if lnode.left==-1:
-                    # return self.body[nxt] # [if map]
-                    if mode!='func': return lnode.key
-                    return self.eval(body[nxt])
-                nxt = lnode.left
-        else:
-            for i in range(n-1, -1, -1):
-                if dir[i]==-1:
-                    # return self.body[hist[i]] # [if map]
-                    if mode!='func': return idx[hist[i]].key
-                    return self.eval(body[hist[i]])
+        return rst
     
+    def min(self):
+        cur = self.root
+        idx = self.idx
+
+        while cur != -1:
+            rst = cur
+            ilrk = idx[cur]
+            cur = ilrk.left
+        # return rst
+    
+        if mode!='func': return idx[rst].key
+        if mode=='func': return self.eval(self.body[rst])
+
+    def max(self):
+        cur = self.root
+        idx = self.idx
+
+        while cur != -1:
+            rst = cur
+            ilrk = idx[cur]
+            cur = ilrk.right
+        # return rst
+    
+        if mode!='func': return idx[rst].key
+        if mode=='func': return self.eval(self.body[rst])
+        
     def alloc(self, key, val=None):
         if self.size == self.cap:
             self.expand()
@@ -370,7 +342,8 @@ class AVLTree:
         return cur
     
     def __getitem__(self, key):
-        return self.get(key)
+        idx = self.index(key)
+        if idx>=0: return self.body[idx]
 
     def __setitem__(self, key, val): 
         self.push(key, val)
@@ -391,13 +364,14 @@ class AVLTree:
         self.idx[self.tail].id = idx
         self.tail = idx
         if mode!='set':
+            # self.body[idx:idx+1].view(np.uint8)[:] = 0
             return self.body[idx]
     
 def istype(obj):
     if isinstance(obj, np.dtype): return True
     return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
-
-def TypedAVLTree(ktype, vtype=None):
+    
+def TypedAVLTree(ktype, vtype=None, attr={}):
     import inspect
     global mode
     if not istype(ktype): mode = 'func'
@@ -413,15 +387,19 @@ def TypedAVLTree(ktype, vtype=None):
     fields = [('idx', nb.from_dtype(ilr)[:]), ('root', nb.int32), ('cur', nb.int32),
               ('cap', nb.uint32), ('size', nb.uint32), ('tail', nb.uint32),
               ('hist', nb.int32[:]), ('dir', nb.int32[:])]
-    if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
-    
+    if mode in {'map', 'func'}:
+        fields += [('body', nb.from_dtype(vtype)[:]), ('buf', nb.from_dtype(vtype)[:])]
+    for k,v in attr.items(): fields.append((k, nb.from_dtype(v)))
     exec(inspect.getsource(AVLTree), dict(globals()), locals())
     
     class TypedAVLTree(locals()['AVLTree']):
         _init_ = AVLTree.__init__
+        
         if mode=='func': eval = ktype
         def __init__(self, cap=16):
             self._init_(ilr, vtype, cap)
+            
+            
     
     return nb.experimental.jitclass(fields)(TypedAVLTree)
     
@@ -488,12 +466,15 @@ def check_valid(tree, index=0):
 if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-    
-    PointAVL = TypedAVLTree(lambda self, p: p.x+p.y, t_point)
+    p = np.void((1,1), t_point)
+    PointAVL = TypedAVLTree(lambda self, p: self.scan_y + p.x+p.y, t_point, {'scan_y':np.float32})
     points = PointAVL()
 
+    
     IntAVL = TypedAVLTree(np.int32, np.int32)
     ints = IntAVL()
+    for i in range(20): ints.push(i,i)
+    print_tree(ints)
     
     abcd
     @nb.njit
