@@ -112,13 +112,14 @@ class AVLTree:
             if key > ck:
                 cur = ilrk.right
                 dir[n] = 1
-            
             n += 1
 
-        # hist[n] is the node
+        # hist[n] is the node to pop
         if cur == -1: return # not found
 
-        node = idx[cur]
+        node = idx[cur] # the node to pop
+
+        n0 = n
         if mode!='set': self.buf[0] = body[cur]
         
         # pnode = idx[hist[n-1]]
@@ -136,32 +137,33 @@ class AVLTree:
                 # print(idx[hist[n]].key, dir[n])
                 n += 1
                 scur = snode.left
-            if mode!='func': node.key = snode.key
-            if mode!='set':
-                body[cur] = body[scur]
-            cur = scur
-            node = snode
+            #if mode!='func': node.key = snode.key
+            #if mode!='set': body[cur] = body[scur]
+                
+            snode.left, node.left = node.left, snode.left
+            snode.right, node.right = node.right, snode.right
+            snode.bal, node.bal = node.bal, snode.bal
+            hist[n0], hist[n] = hist[n], hist[n0]
             
-
+            if n0==0: self.root = scur
+            elif dir[n0-1]==-1: idx[hist[n0-1]].left = scur
+            elif dir[n0-1]==1: idx[hist[n0-1]].right = scur
+            
+            cur = scur
+            # node = snode
+            
         # del black node with one red child
-        if node.left != -1:
-            if mode!='func': node.key = idx[node.left].key
-            if mode!='set': body[cur] = body[node.left]
-            self.free(node.left)
-            node.left = -1
-            node.bal = 0
-        elif node.right != -1:
-            if mode!='func': node.key = idx[node.right].key
-            if mode!='set': body[cur] = body[node.right]
-            self.free(node.right)
-            node.right = -1
-            node.bal = 0
-        else:
-            if n==0: self.root = -1
-            elif dir[n-1]==-1: idx[hist[n-1]].left = -1
-            elif dir[n-1]==1: idx[hist[n-1]].right = -1
-            self.free(hist[n])
+        if node.left != -1: goal = node.left
+        elif node.right != -1: goal = node.right
+        else: goal = -1
+
+        if n==0: self.root = goal
+        elif dir[n-1]==-1: idx[hist[n-1]].left = goal
+        elif dir[n-1]==1: idx[hist[n-1]].right = goal
         
+        self.free(hist[n])
+            
+    
         for i in range(n-1, -1, -1):
             n = hist[i]
             d = dir[i]
@@ -464,6 +466,23 @@ def check_valid(tree, index=0):
     return True, current_height
 
 if __name__ == '__main__':
+    IntAVL = TypedAVLTree(np.int32)
+    ints = IntAVL()
+    np.random.seed(0)
+    x = np.arange(10)
+    np.random.shuffle(x)
+    for i in x: ints.push(i)
+    print_tree(ints)
+
+    print_tree(ints)
+
+
+    for i in x:
+        print(i)
+        print_tree(ints)
+        ints.pop(i)
+    
+    aaaa
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
     p = np.void((1,1), t_point)

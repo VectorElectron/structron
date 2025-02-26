@@ -12,7 +12,7 @@ t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 FloatAVL = structron.TypedAVLTree(np.float32)
 lst = FloatAVL()
 
-x = np.random.rand(10000000).astype(np.float32)
+x = np.random.rand(100).astype(np.float32)
 
 @nb.njit
 def insert(lst, x):
@@ -32,6 +32,7 @@ b = time()
 pop(lst, x)
 print('1000w number avl insert %.3fs del %.3f s:'%(b-a, time()-b))
 
+'''
 # TypedMemory cast Memory as dtype
 FloatRB = structron.TypedRBTree(np.float32)
 lst = FloatRB()
@@ -45,3 +46,4 @@ insert(lst, x)
 b = time()
 pop(lst, x)
 print('1000w number redblack insert %.3fs del %.3f s:'%(b-a, time()-b))
+'''
