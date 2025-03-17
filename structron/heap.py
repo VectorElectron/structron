@@ -6,7 +6,9 @@ mode = 'set'
 class Heap:
     def __init__(self, ktype, dtype, cap=16):
         self.cap = cap
-        if mode!='func':
+        if mode=='set':
+            self.key = np.zeros(cap, dtype=ktype)
+        if mode=='map':
             self.key = np.zeros(cap, dtype=ktype)
         if mode!='set':
             self.body = np.zeros(cap, dtype=dtype)
@@ -17,24 +19,41 @@ class Heap:
         if self.size == self.cap: self.expand()
         i = self.size
 
-        if mode != 'func':
+        if mode=='eval':
+            body = self.body
+            body[i] = k
+        if mode=='comp':
+            body = self.body
+            body[i] = k
+        if mode=='set':
             key = self.key
             key[i] = k
-        if mode!='set':
+        if mode=='map':
+            key = self.key
             body = self.body
+            key[i] = k
             body[i] = v
 
         while i!=0:
-            if mode!='func':
-                if key[(i-1)//2]<=key[i]: break
-            if mode=='func':
-                if self.eval(body[(i-1)//2])<=self.eval(body[i]): break
+            if mode=='set':
+                br = key[(i-1)//2] - key[i]
+            if mode=='map':
+                br = key[(i-1)//2] - key[i]
+            if mode=='eval':
+                br = self.eval(body[(i-1)//2])-self.eval(body[i])
+            if mode=='comp':
+                br = self.comp(body[(i-1)//2], body[i])
+
+            if br<=0: break
             self.swap((i-1)//2, i)
             i = (i-1) // 2
         self.size += 1
 
     def expand(self):
-        if mode!='func':
+        if mode=='set':
+            self.key = np.concatenate(
+                (self.key, np.zeros(self.cap, self.key.dtype)))
+        if mode=='map':
             self.key = np.concatenate(
                 (self.key, np.zeros(self.cap, self.key.dtype)))
         if mode!='set':
@@ -42,7 +61,10 @@ class Heap:
         self.cap *= 2
         
     def swap(self, i1, i2):
-        if mode!='func':
+        if mode=='set':
+            key = self.key
+            key[i1], key[i2] = key[i2], key[i1]
+        if mode=='map':
             key = self.key
             key[i1], key[i2] = key[i2], key[i1]
         if mode!='set':
@@ -52,7 +74,7 @@ class Heap:
             body[i2] = self.buf[0]
 
     def pop(self):
-        if self.size == 0: return
+        if self.size == 0: return self.body[0]
         self.size -= 1
         self.swap(0, self.size)
         self.heapfy(0)
@@ -66,8 +88,9 @@ class Heap:
         return self.key[0]
     
     def heapfy(self, i):
-        if mode!='func': key = self.key
-        if mode=='func': body = self.body
+        if mode=='set': key = self.key
+        if mode=='map': key = self.key
+        if mode!='set': body = self.body
         
         size = self.size
         while True:
@@ -75,14 +98,21 @@ class Heap:
             r = 2 * i + 2
             
             smallest = i
-            if mode!='func':
-                if (l < size) and (key[l] < key[smallest]): smallest = l; 
-                if (r < size) and (key[r] < key[smallest]): smallest = r;
-            if mode=='func':
-                if (l < size) and (self.eval(body[l]) < self.eval(body[smallest])):
-                    smallest = l; 
-                if (r < size) and (self.eval(body[r]) < self.eval(body[smallest])):
-                    smallest = r;
+
+            if mode=='set':
+                if (l < size) and key[l]<key[smallest]: smallest = l; 
+                if (r < size) and key[r]<key[smallest]: smallest = r;
+            if mode=='map':
+                if (l < size) and key[l]<key[smallest]: smallest = l; 
+                if (r < size) and key[r]<key[smallest]: smallest = r;
+                
+            if mode=='eval':
+                if (l < size) and self.eval(body[l])<self.eval(body[smallest]): smallest = l; 
+                if (r < size) and self.eval(body[r])<self.eval(body[smallest]): smallest = r;
+            if mode=='comp':
+                if (l < size) and self.comp(body[l], body[smallest])<0: smallest = l; 
+                if (r < size) and self.comp(body[r], body[smallest])<0: smallest = r;
+            
             if smallest == i: break
             else:
                 self.swap(i, smallest)
@@ -103,38 +133,53 @@ def istype(obj):
 def TypedHeap(ktype, vtype=None):
     import inspect
     global mode
-    if not istype(ktype): mode = 'func'
+    if not istype(ktype):
+        n = len(inspect.signature(ktype).parameters)
+        mode = 'eval' if n==2 else 'comp'
     elif vtype is None: mode = 'set'
     else: mode = 'map'
-    
+
     exec(inspect.getsource(Heap), dict(globals()), locals())
-    
+
     fields = [('size', nb.uint32), ('cap', nb.uint32)]
     if mode in {'set', 'map'}:
         fields.append(('key', nb.from_dtype(ktype)[:]))
-    if mode in {'map', 'func'}:
+    if mode in {'map', 'eval', 'comp'}:
         fields += [
               ('body', nb.from_dtype(vtype)[:]),
               ('buf', nb.from_dtype(vtype)[:])]
-                
+
     class TypedHeap(locals()['Heap']):
         _init_ = Heap.__init__
-        if mode=='func': eval = ktype
+        if mode=='eval': eval = ktype
+        if mode=='comp': comp = ktype
+
         def __init__(self, cap):
-            self._init_(None if mode=='func' else ktype, vtype, cap)
+            self._init_(None if mode=='eval' or mode=='comp' else ktype, vtype, cap)
     
     return nb.experimental.jitclass(fields)(TypedHeap)
+
+def print_heap(arr):
+    def print_tree(index, level):
+        if index < len(arr):
+            print_tree(2 * index + 2, level + 1)  # 先打印右子树
+            print('    ' * level + str(arr[index]))  # 打印当前节点
+            print_tree(2 * index + 1, level + 1)  # 再打印左子树
+    print_tree(0, 0)
     
 if __name__ == '__main__':
     from time import time
-    t_point = np.dtype([('x', np.float32), ('y', np.float32)])
+    def f(self, x, y): return x - y
+    IntHeap = TypedHeap(f, np.float32)
+    ints = IntHeap(128)
+    
+    x = np.arange(20)
+    np.random.shuffle(x)
 
-    p1, p2 = np.array([(1,1), (2,2)], dtype=t_point)
-    
-    PointHeap = TypedHeap(np.float32, t_point)
-    points = PointHeap(128)
-    # points.push(1, np.void((1,1), t_point))
-    
+    for i in x: ints.push(i)
+
+
+    aaaa
     IntHeap = TypedHeap(np.int32)
     ints = IntHeap(128)
     

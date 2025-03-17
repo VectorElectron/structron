@@ -8,6 +8,7 @@ class RBTree:
         self.idx = np.zeros(cap, dtype=ktype)
         if mode!='set':
             self.body = np.zeros(cap, dtype=vtype)
+            self.buf = np.zeros(1, dtype=vtype)
         self.idx.id[:] = np.arange(1, cap+1, dtype=np.int32)
         # for i in range(cap): self.idx[i].id = i+1
         self.root = -1
@@ -38,35 +39,44 @@ class RBTree:
         if cur==-1:
             self.root = self.alloc(k, v)
             self.idx[self.root].bal = 1 # new black root
-            return
+            return self.root
 
         idx = self.idx
         hist = self.hist
         dir = self.dir
-        if mode=='func':
+        if mode=='eval':
             body = self.body
-            key = self.eval(v)
-        if mode!='func': key = k
+            key = self.eval(k)
+        if mode=='comp':
+            body = self.body
+        if mode=='set': key = k
+        if mode=='map': key = k
         n = 0
         
         while cur != -1:
+            parent = cur
             ilrk = idx[cur]
-            if mode!='func': ck = ilrk.key
-            if mode=='func': ck = self.eval(body[cur])
-            if key == ck:
-                if mode!='set': self.body[cur] = v
-                return
+            if mode=='set': br = key - ilrk.key
+            if mode=='map': br = key - ilrk.key
+            if mode=='eval': br = key - self.eval(body[cur])
+            if mode=='comp': br = self.comp(k, body[cur])
+
+            if br==0: # found
+                if mode=='map': self.body[cur] = v
+                if mode=='eval': self.body[cur] = k
+                if mode=='comp': self.body[cur] = k
+                return cur
             
             hist[n] = cur
-            if key < ck:
+            if br<0:
                 cur = ilrk.left
                 dir[n] = -1
-            if key > ck:
+            if br>0:
                 cur = ilrk.right
                 dir[n] = 1
             n += 1
         
-        hist[n] = self.alloc(k, v)
+        hist[n] = cur = self.alloc(k, v)
         idx = self.idx
         
         pnode = idx[hist[n-1]]
@@ -145,6 +155,7 @@ class RBTree:
                 elif b0==-1: n0.left = nroot
                 elif b0==1: n0.right = nroot
                 break
+        return cur
 
     def pop(self, key):
         parent = -1
@@ -153,22 +164,25 @@ class RBTree:
         hist = self.hist
         dir = self.dir
         idx = self.idx
-        if mode!='set':
-            body = self.body
+        if mode!='set': body = self.body
+        if mode=='eval': key = self.eval(key)
         n = 0
 
         # find the node
         while cur!=-1:
             ilrk = idx[cur]
-            if mode!='func': ck = ilrk.key
-            if mode=='func': ck = self.eval(body[cur])
+            if mode=='set': br = key - ilrk.key
+            if mode=='map': br = key - ilrk.key
+            if mode=='eval': br = key - self.eval(body[cur])
+            if mode=='comp': br = self.comp(key, body[cur])
+            
             hist[n] = cur
-            if key == ck:
+            if br==0:
                 break
-            if key < ck:
+            if br<0:
                 cur = ilrk.left
                 dir[n] = -1
-            if key > ck:
+            if br>0:
                 cur = ilrk.right
                 dir[n] = 1
 
@@ -179,8 +193,8 @@ class RBTree:
         if cur == -1: return # not found
 
         node = idx[cur]
-        if mode != 'set':
-            value = body[cur] # [if map]
+        n0 = n
+        if mode != 'set': self.buf[0] = body[cur]
         
         # pnode = idx[hist[n-1]]
         
@@ -197,39 +211,31 @@ class RBTree:
                 # print(idx[hist[n]].key, dir[n])
                 n += 1
                 scur = snode.left
-            if mode!='func': node.key = snode.key
-            if mode!='set':
-                body[cur] = body[scur] # [if map]
-            cur = scur
-            node = snode
-        
-        # for i in hist[:n+1]: print(i, idx[i].key)
+            # if mode!='func': node.key = snode.key
+            # if mode!='set': body[cur] = body[scur]
 
+            snode.left, node.left = node.left, snode.left
+            snode.right, node.right = node.right, snode.right
+            snode.bal, node.bal = node.bal, snode.bal
+            hist[n0], hist[n] = hist[n], hist[n0]
+            
+            if n0==0: self.root = scur
+            elif dir[n0-1]==-1: idx[hist[n0-1]].left = scur
+            elif dir[n0-1]==1: idx[hist[n0-1]].right = scur
+            
+            cur = scur
+            # node = snode
+        
         # del black node with one red child
-        if node.left != -1:
-            if mode!='func': node.key = idx[node.left].key
-            if mode!='set': body[cur] = body[node.left]
-            self.free(node.left)
-            node.left = -1
-            if mode!='set': return value # [if map]
-            return
-        elif node.right != -1:
-            if mode!='func': node.key = idx[node.right].key
-            if mode!='set': body[cur] = body[node.right]
-            self.free(node.right)
-            node.right = -1
-            if mode!='set': return value # [if map]
-            return
-        else:
-            if n==0: self.root = -1
-            elif dir[n-1]==-1: idx[hist[n-1]].left = -1
-            elif dir[n-1]==1: idx[hist[n-1]].right = -1
-        
-        deln = hist[n]
-        
-        if n==0: self.root = -1
-        elif dir[n-1]==-1: idx[hist[n-1]].left = -1
-        elif dir[n-1]==1: idx[hist[n-1]].right = -1
+        if node.left != -1: goal = node.left
+        elif node.right != -1: goal = node.right
+        else: goal = -1
+
+        if n==0: self.root = goal
+        elif dir[n-1]==-1: idx[hist[n-1]].left = goal
+        elif dir[n-1]==1: idx[hist[n-1]].right = goal
+
+        self.free(hist[n])
         
         while n>0:
             nroot = 0
@@ -365,120 +371,151 @@ class RBTree:
             else: g_n.right = nroot
             if stop: break
 
-        self.free(deln)
-        if mode!='set': return value
+        if mode!='set': return self.buf[0]
 
-    def get(self, key):
+    def index(self, key):
         cur = self.root
         idx = self.idx
-        if mode!='set': body = self.body
+        
+        if mode=='eval':
+            body = self.body
+            key = self.eval(key)
+        if mode=='comp': body = self.body
+        
         while cur != -1:
-            node = idx[cur]
-            if mode!='func': ck = node.key
-            if mode=='func': ck = self.eval(body[cur])
-            if key == ck:
-                if mode!='set': return body[cur]
-                return cur
-            if key < ck: cur = node.left
-            if key > ck: cur = node.right
+            ilrk = idx[cur]
+            if mode=='set': br = key - ilrk.key
+            if mode=='map': br = key - ilrk.key
+            if mode=='eval': br = key - self.eval(body[cur])
+            if mode=='comp': br = self.comp(key, body[cur])
+
+            if br==0: return cur
+            # if mode!='set': return body[cur]
+            # return cur
+            if br<0: cur = ilrk.left
+            if br>0: cur = ilrk.right
+        return -1
 
     def has(self, key):
-        cur = self.root
-        if mode!='set': body = self.body
-        while cur != -1:
-            node = self.idx[cur]
-            if mode!='func': ck = node.key
-            if mode=='func': ck = self.eval(body[cur])
-            if key == ck: return True
-            if key < ck: cur = node.left
-            if key > ck: cur = node.right
-        return False
-
-    def left(self, key):
-        cur = parent = self.root        
-        hist = self.hist
-        dir = self.dir
-        n = 0
-        idx = self.idx
-        if mode=='func':
-            body = self.body
+        return self.index(key) >= 0
         
+    def left(self, key):
+        cur = self.root
+        idx = self.idx
+        hist = self.hist
+        hist[-2] = 0 # level
+        self.dir[-2] = -1
+        
+        if mode=='eval':
+            body = self.body
+            key = self.eval(key)
+        if mode=='comp': body = self.body
+
+        rst = -1
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
-            if mode!='func': ck = ilrk.key
-            if mode=='func': ck = self.eval(body[cur])
+            if mode=='set': br = key - ilrk.key
+            if mode=='map': br = key - ilrk.key
+            if mode=='eval': br = key - self.eval(body[cur])
+            if mode=='comp': br = self.comp(key, body[cur])
             
-            if key == ck: break
-            if key < ck: # left
-                hist[n] = cur
-                dir[n] = -1
+            if br<=0: # left
                 cur = ilrk.left
-            if key > ck: # right
-                hist[n] = cur
-                dir[n] = 1
+            if br>0: # right
+                rst = cur
+                hist[hist[-2]] = cur
+                hist[-2] += 1
                 cur = ilrk.right
-            n += 1
-        if cur == -1: return
-        node = idx[cur]
-        if node.left != -1:
-            nxt = node.left
-            while True:
-                lnode = idx[nxt]
-                if lnode.right==-1:
-                    # return self.body[nxt] # [if map]
-                    if mode!='func': return lnode.key
-                    return self.eval(body[nxt])
-                nxt = lnode.right
-        else:
-            for i in range(n-1, -1, -1):
-                if dir[i]==1:
-                    # return self.body[hist[i]] # [if map]
-                    if mode!='func': return idx[hist[i]].key
-                    return self.eval(body[hist[i]])
+        return rst
 
     def right(self, key):
-        cur = parent = self.root
-        hist = self.hist
-        dir = self.dir
-        n = 0
+        cur = self.root
         idx = self.idx
-        if mode=='func':
-            body = self.body
+        hist = self.hist
+        hist[-2] = 0 # level
+        self.dir[-2] = 1
         
+        if mode=='eval':
+            body = self.body
+            key = self.eval(key)
+        if mode=='comp': body = self.body
+
+        rst = -1
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
-            if mode!='func': ck = ilrk.key
-            if mode=='func': ck = self.eval(body[cur])
+            if mode=='set': br = key - ilrk.key
+            if mode=='map': br = key - ilrk.key
+            if mode=='eval': br = key - self.eval(body[cur])
+            if mode=='comp': br = self.comp(key, body[cur])
             
-            if key == ck: break
-            if key < ck: # left
-                hist[n] = cur
-                dir[n] = -1
+            if br<0: # left
+                rst = cur
+                hist[hist[-2]] = cur
+                hist[-2] += 1
                 cur = ilrk.left
-            if key > ck: # right
-                hist[n] = cur
-                dir[n] = 1
+            if br>=0: # right
                 cur = ilrk.right
-            n += 1
-        if cur == -1: return
-        node = idx[cur]
-        if node.right != -1:
-            nxt = node.right
-            while True:
-                lnode = idx[nxt]
-                if lnode.left==-1:
-                    # return self.body[nxt] # [if map]
-                    if mode!='func': return lnode.key
-                    return self.eval(body[nxt])
-                nxt = lnode.left
-        else:
-            for i in range(n-1, -1, -1):
-                if dir[i]==-1:
-                    # return self.body[hist[i]] # [if map]
-                    if mode!='func': return idx[hist[i]].key
-                    return self.eval(body[hist[i]])
+        return rst
+
+    def next(self):
+        idx = self.idx
+        hist = self.hist
+        dir = self.dir[-2]
+
+        if hist[-2] == 0: return -1
+        
+        hist[-2] -= 1
+        cur = hist[hist[-2]]
+
+        
+        if dir==1: hist[-3] = idx[cur].right
+        if dir==-1: hist[-3] = idx[cur].left
+
+        while hist[-3]!=-1:
+            hist[hist[-2]] = hist[-3]
+            hist[-2] += 1
+            if dir==1: hist[-3] = idx[hist[-3]].left
+            if dir==-1: hist[-3] = idx[hist[-3]].right
+
+        return cur
+    
+    def min(self):
+        cur = self.root
+        idx = self.idx
+        hist = self.hist
+        hist[-2] = 0 # level
+        self.dir[-2] = 1
+
+        while cur != -1:
+            rst = cur
+            hist[hist[-2]] = cur
+            hist[-2] += 1
+            ilrk = idx[cur]
+            cur = ilrk.left
+        return rst
+    
+        if mode!='eval': return idx[rst].key
+        if mode=='eval': return self.eval(self.body[rst])
+
+    def max(self):
+        cur = self.root
+        idx = self.idx
+        hist = self.hist
+        hist[-2] = 0 # level
+        self.dir[-2] = -1
+
+        while cur != -1:
+            rst = cur
+            hist[hist[-2]] = cur
+            hist[-2] += 1
+            ilrk = idx[cur]
+            cur = ilrk.right
+        return rst
+    
+        if mode!='eval': return idx[rst].key
+        if mode=='eval': return self.eval(self.body[rst])
         
     def alloc(self, key, val=None):
         if self.size == self.cap:
@@ -488,18 +525,21 @@ class RBTree:
         cur = self.cur
         
         self.cur = self.idx[cur].id
-        if mode!='set': self.body[cur] = val
+        if mode=='map': self.body[cur] = val
+        if mode=='eval': self.body[cur] = key
+        if mode=='comp': self.body[cur] = key
         
         ilrk = self.idx[cur]
         ilrk.left = -1
         ilrk.right = -1
         ilrk.bal = 0
-        if mode!='func': ilrk.key = key
-        
+        if mode=='set': ilrk.key = key
+        if mode=='map': ilrk.key = key
         return cur
     
     def __getitem__(self, key):
-        return self.get(key)
+        idx = self.index(key)
+        if idx>=0: return self.body[idx]
 
     def __setitem__(self, key, val): 
         self.push(key, val)
@@ -520,35 +560,41 @@ class RBTree:
         self.idx[self.tail].id = idx
         self.tail = idx
         if mode!='set':
-            return self.body[idx] # [if map]
+            return self.body[idx]
 
 def istype(obj):
     if isinstance(obj, np.dtype): return True
     return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
 
-def TypedRBTree(ktype, vtype=None):
+def TypedRBTree(ktype, vtype=None, attr={}):
     import inspect
     global mode
-    if not istype(ktype): mode = 'func'
+    if not istype(ktype):
+        n = len(inspect.signature(ktype).parameters)
+        mode = 'eval' if n==2 else 'comp'
     elif vtype is None: mode = 'set'
     else: mode = 'map'
 
     dtype = [('id', np.int32), ('left', np.int32),
         ('right', np.int32), ('key', ktype), ('bal', np.int8)]
-    if mode=='func': dtype.pop(-2)
+    if mode in {'eval', 'comp'}: dtype.pop(-2)
     ilr = np.dtype(dtype)
     
     
     fields = [('idx', nb.from_dtype(ilr)[:]), ('root', nb.int32), ('cur', nb.int32),
               ('cap', nb.uint32), ('size', nb.uint32), ('tail', nb.uint32),
               ('hist', nb.int32[:]), ('dir', nb.int32[:])]
-    if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
+    if mode in {'map', 'eval', 'comp'}:
+        fields += [('body', nb.from_dtype(vtype)[:]), ('buf', nb.from_dtype(vtype)[:])]
+    for k,v in attr.items(): fields.append((k, nb.from_dtype(v)))
 
     exec(inspect.getsource(RBTree), dict(globals()), locals())
     
     class TypedRBTree(locals()['RBTree']):
         _init_ = RBTree.__init__
-        if mode=='func': eval = ktype
+
+        if mode=='eval': eval = ktype
+        if mode=='comp': comp = ktype
         def __init__(self, cap=16):
             self._init_(ilr, vtype, cap)
     
@@ -622,11 +668,21 @@ if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
     
-    PointRB = TypedRBTree(lambda self, p: p.x+p.y, t_point)
-    points = PointRB()
+    def f(self, x, y): return x-y
+    
+    IntRB = TypedRBTree(f, np.int32)
+    ints = IntRB()
+    
+    x = np.arange(100)
+    np.random.seed(0)
+    np.random.shuffle(x)
+    
+    for i in x: ints.push(i)
 
-    points.push(None, np.void((1,1), t_point))
-    points.push(None, np.void((2,3), t_point))
+    for i in x[::2]: ints.pop(i)
+    print(ints.size)
+    # print_tree(ints)
+    abcd
     
     '''
     np.random.seed(1)
