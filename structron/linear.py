@@ -90,7 +90,5 @@ def TypedQueue(dtype): return type_deque(dtype, 'queue')
 if __name__ == '__main__':
     from time import time
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-
     PointDeque = TypedQueue(t_point)
-    
     points = PointDeque()

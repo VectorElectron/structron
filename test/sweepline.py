@@ -2,11 +2,13 @@ import sys; sys.path.append('../')
 
 import numpy as np
 import numba as nb
+from numba.extending import intrinsic
 
 from structron import TypedAVLTree, TypedRBTree, TypedHeap
 from structron import TypedMemory
 
 
+t_real = np.dtype([('i', np.int32), ('f', np.float32)])
 
 t_point = np.dtype([('x', np.int64), ('y', np.int64)])
 t_line = np.dtype([('x1', np.int64), ('y1', np.int64),
@@ -24,16 +26,20 @@ def line_cross(actline, i1, i2, e0):
 
     dx12, dy12, dx34, dy34 = x1 - x2, y1 - y2, x3 - x4, y3 - y4
     denom = dx12 * dy34 - dy12 * dx34
-
+    
     if denom == 0: return -1
     t = (x1 - x3) * dy34 - (y1 - y3) * dx34
     u = dx12 * (y1 - y3) - dy12 * (x1 - x3)
-
+    
     if not (0 <= t <= denom or 0 >= t >= denom): return -1
     if not (0 <= -u <= denom or 0 >= -u >= denom): return -1
-    x = (x1 * denom - t * dx12) / denom
-    y = (y1 * denom - t * dy12) / denom
+    
+    # x = (x1 * denom - t * dx12) / denom
+    # y = (y1 * denom - t * dy12) / denom
 
+    x = x1 - t/denom * dx12
+    y = y1 - t/denom * dy12
+    
     e0['s'], e0['e'] = i1, i2
     e0['tp'], e0['x'], e0['y'] = 2, x, y
     
@@ -116,11 +122,11 @@ def init_events(lines):
     # 1: insert, 2: cross, 3: pop
     for i in range(0, len(pts), 2):
         p1, p2 = pts[i], pts[i+1]
-
+        
         if p1['y'] != p2['y']:
             dir = p2['y'] - p1['y']
         else: dir = p1['x'] - p2['x']
-
+        
         dir = dir < 0
         e0['s'] = i if dir else i+1
         e0['e'] = i+1 if dir else i
@@ -137,8 +143,9 @@ def init_events(lines):
     return events
 
 debug = False
-@nb.njit
-def findx(lines, events):
+@nb.njit(nogil=True, cache=True)
+def findx(lines):
+    events = init_events(lines)
     rst = PointMemory(128)
     e0 = np.zeros(1, t_event)[0]
     p0 = np.zeros(1, t_point)[0]
@@ -244,7 +251,6 @@ def findx(lines, events):
 
             actline.min() if minid==-1 else actline.right(l0)
 
-            
             while True:
                 cur = actline.next()
                 if cur in xs[:xn]:
@@ -287,7 +293,7 @@ def findx(lines, events):
                 if debug: print('insert > right X:', e0)
                 events.push(e0)
         if debug: print_tree(actline)
-        # input('round ...')
+        if debug: input('round ...')
     return rst.body[:rst.size]
                     
 
@@ -315,10 +321,11 @@ if __name__ == '__main__':
     '''
     
     np.random.seed(3)
-    l0 = random_lines(1000000, 0.1, (0,100), (0,100))
+    l0 = random_lines(1000, 1, (0,3), (0,3))
 
-    # l0 = np.array([[-1,2],[-1,-2],[0,0],[0,1], [-1,2],[1,-2], [-1,-1],[1,1], [0,0],[-1,1], [0,0],[-1,-2]], dtype=np.float32)
-    l0 *= 1e5
+    #l0 = np.array([[-1,2],[-1,-2],[0,0],[0,1], [-1,2],[1,-2], [-1,-1],[1,1], [0,0],[-1,1], [0,0],[-1,-2]], dtype=np.float32)
+    #l0 = np.array([[0,0,1,1],[1,0,1,1]], dtype=np.float32)
+    l0 *= 1e6
 
     from shapely.geometry import MultiLineString
     from shapely.ops import unary_union
@@ -326,19 +333,16 @@ if __name__ == '__main__':
     ls = MultiLineString(list(l0.reshape(-1,2,2)))
     
     start = time()
-    # unary_union(ls.geoms)
-    rst = print(time()-start)
+    unary_union(ls.geoms)
+    rst = print('shapely cost:', time()-start)
         
     lines = l0.astype(np.int64).view(t_point).reshape(-1,2)
     
-    events = init_events(lines)
-    rst = findx(lines, events)
-
+    rst = findx(lines)
+    
     start = time()
-    events = init_events(lines)
-    rst = findx(lines, events)
-    print(len(rst), 'pints, cost', time()-start)
-    print(len(rst), 'x found')
+    rst = findx(lines)
+    print('structron cost:', len(rst), 'found', time()-start)
 
     ls = lines.view(np.int64).astype(np.float64).reshape(-1,4)
     ls = np.concatenate((ls, ls[:,:2]), axis=-1)

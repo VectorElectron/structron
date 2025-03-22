@@ -542,11 +542,15 @@ def check_valid(tree, index=0):
     return True, current_height
 
 if __name__ == '__main__':
-    def f(self, x, y): return x-y
-    
-    IntAVL = TypedAVLTree(np.int32)
-    ints = IntAVL()
+    t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
+    def f(self, p): return p['y']
+
+    
+    IntAVL = TypedAVLTree(f, t_point)
+    ints = IntAVL()
+    aaa
+    
     x = range(10)
     
     for i in x: ints.push(i)

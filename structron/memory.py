@@ -7,18 +7,17 @@ class Memory: # [rep] Memory->TypedMemory
         self.cur = 0 # next blank
         self.cap = cap
         self.size = 0
-        self.tail = cap-1
+        # self.tail = cap-1
         self.body = np.zeros(cap, dtype)
 
     def expand(self):
         idx = np.arange(1, self.cap*2+1, dtype=np.int32)
         self.body = np.concatenate((self.body, self.body))
-        
         idx[:self.cap] = self.idx
         self.idx = idx
         self.cur = self.cap
         self.cap *= 2
-        self.tail = self.cap - 1
+        # self.tail = self.cap - 1
     
     def push(self, obj):
         if self.size == self.cap:
@@ -39,8 +38,10 @@ class Memory: # [rep] Memory->TypedMemory
         if self.size==self.cap:
             self.cur = idx
         self.size -= 1
-        self.idx[self.tail] = idx
-        self.tail = idx
+        self.idx[idx] = self.cur
+        self.cur = idx
+        # self.idx[self.tail] = idx
+        # self.tail = idx
         return self.body[idx]
 '''
 import inspect
@@ -78,7 +79,7 @@ def sub_class(cls, dtype, **key):
 def TypedMemory(dtype):
     fields = [('idx', nb.int32[:]), ('cur', nb.int32),
               ('cap', nb.uint32), ('size', nb.uint32),
-              ('tail', nb.uint32), ('body', nb.from_dtype(dtype)[:])]
+              ('body', nb.from_dtype(dtype)[:])]
     
     class TypedMemory(Memory):
         _init_ = Memory.__init__
@@ -89,9 +90,9 @@ def TypedMemory(dtype):
 if __name__ == '__main__':
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
     
-    PointMemory = TypedMemory(t_point)
-
-    aaaa
+    IntMemory = TypedMemory(np.int32)
+    ints = IntMemory(2)
+    abcd
     IntMemory = TypedMemory(np.uint32)
     points = PointMemory(2)
     lst = IntMemory(2)

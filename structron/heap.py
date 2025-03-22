@@ -19,34 +19,30 @@ class Heap:
         if self.size == self.cap: self.expand()
         i = self.size
 
-        if mode=='eval':
-            body = self.body
-            body[i] = k
-        if mode=='comp':
-            body = self.body
-            body[i] = k
-        if mode=='set':
-            key = self.key
-            key[i] = k
-        if mode=='map':
-            key = self.key
-            body = self.body
-            key[i] = k
-            body[i] = v
+        if mode=='eval': body = self.body
+        if mode=='comp': body = self.body
+        if mode=='set': key = self.key
+        if mode=='map': key, body = self.key, self.body
 
         while i!=0:
-            if mode=='set':
-                br = key[(i-1)//2] - key[i]
-            if mode=='map':
-                br = key[(i-1)//2] - key[i]
-            if mode=='eval':
-                br = self.eval(body[(i-1)//2])-self.eval(body[i])
-            if mode=='comp':
-                br = self.comp(body[(i-1)//2], body[i])
+            pi = (i-1)//2
+            if mode=='set': br = key[pi] - k
+            if mode=='map': br = key[pi] - k
+            if mode=='eval': br = self.eval(body[pi])-self.eval(k)
+            if mode=='comp': br = self.comp(body[pi], k)
 
             if br<=0: break
-            self.swap((i-1)//2, i)
-            i = (i-1) // 2
+
+            if mode=='set': key[i] = key[pi]
+            if mode=='map': key[i] = key[pi]
+            if mode!='set': body[i] = body[pi]
+            i = pi
+
+        if mode=='eval': body[i] = k
+        if mode=='comp': body[i] = k
+        if mode=='set': key[i] = k
+        if mode=='map': key[i], body[i] = k, v
+            
         self.size += 1
 
     def expand(self):
@@ -59,64 +55,70 @@ class Heap:
         if mode!='set':
             self.body = np.concatenate((self.body, self.body))
         self.cap *= 2
-        
-    def swap(self, i1, i2):
-        if mode=='set':
-            key = self.key
-            key[i1], key[i2] = key[i2], key[i1]
-        if mode=='map':
-            key = self.key
-            key[i1], key[i2] = key[i2], key[i1]
-        if mode!='set':
-            body = self.body
-            self.buf[0] = body[i1]
-            body[i1] = body[i2]
-            body[i2] = self.buf[0]
 
     def pop(self):
-        if self.size == 0: return self.body[0]
+        if self.size == 0: return
         self.size -= 1
-        self.swap(0, self.size)
-        self.heapfy(0)
-        if mode!='set':
-            return self.body[self.size]
-        return self.key[self.size]
+        # self.swap(0, self.size)
+        size = self.size
+        
+        if mode=='set':
+            key = self.key
+            key[0], key[size] = key[size], key[0]
+            last = key[0]
+        if mode=='map':
+            key = self.key
+            body = self.body
+            self.buf[0] = body[0]
+            last = key[size]
+        if mode=='eval':
+            body = self.body
+            self.buf[0] = body[0]
+            last = body[size]
+        if mode=='comp':
+            body = self.body
+            self.buf[0] = body[0]
+            last = body[size]
+        
+        i = 0
+        while True:
+            ci = 2 * i + 1
+            if ci>=size: break
+            
+            if mode=='set':
+                if ci+1<size and key[ci]>=key[ci+1]: ci+=1
+                if last <= key[ci]: break
+            if mode=='map':
+                if ci+1<size and key[ci]>=key[ci+1]: ci+=1
+                if last <= key[ci]: break
+            if mode=='eval':
+                if ci+1<size and self.eval(body[ci])>=self.eval(body[ci+1]): ci += 1
+                if self.eval(last)<=self.eval(body[ci]): break
+            if mode=='comp':
+                if ci+1<size and self.comp(body[ci], body[ci+1])>=0: ci += 1
+                if self.comp(last, body[ci])<=0: cbreak
+                
+            if mode=='set': key[i] = key[ci]
+            if mode=='map': key[i] = key[ci]
+            if mode!='set': body[i] = body[ci]
+            i = ci
+            
+        if mode=='set': key[i] = last
+        if mode=='map': key[i], body[i] = last, body[size]
+        if mode=='eval': body[i] = last
+        if mode=='comp': body[i] = last
+                
+        if mode!='set': return self.buf[0]
+        return key[size]
 
     def top(self):
         if mode!='set':
             return self.body[0]
         return self.key[0]
-    
-    def heapfy(self, i):
-        if mode=='set': key = self.key
-        if mode=='map': key = self.key
-        if mode!='set': body = self.body
-        
-        size = self.size
-        while True:
-            l = 2 * i + 1 
-            r = 2 * i + 2
-            
-            smallest = i
 
-            if mode=='set':
-                if (l < size) and key[l]<key[smallest]: smallest = l; 
-                if (r < size) and key[r]<key[smallest]: smallest = r;
-            if mode=='map':
-                if (l < size) and key[l]<key[smallest]: smallest = l; 
-                if (r < size) and key[r]<key[smallest]: smallest = r;
-                
-            if mode=='eval':
-                if (l < size) and self.eval(body[l])<self.eval(body[smallest]): smallest = l; 
-                if (r < size) and self.eval(body[r])<self.eval(body[smallest]): smallest = r;
-            if mode=='comp':
-                if (l < size) and self.comp(body[l], body[smallest])<0: smallest = l; 
-                if (r < size) and self.comp(body[r], body[smallest])<0: smallest = r;
-            
-            if smallest == i: break
-            else:
-                self.swap(i, smallest)
-                i = smallest
+    def topkey(self): return self.key[0]
+
+    def topvalue(self): return self.body[0]
 
     def clear(self): self.size = 0
 
@@ -130,7 +132,7 @@ def istype(obj):
     if isinstance(obj, np.dtype): return True
     return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
                  
-def TypedHeap(ktype, vtype=None):
+def TypedHeap(ktype, vtype=None, jit=True):
     import inspect
     global mode
     if not istype(ktype):
@@ -156,7 +158,7 @@ def TypedHeap(ktype, vtype=None):
 
         def __init__(self, cap):
             self._init_(None if mode=='eval' or mode=='comp' else ktype, vtype, cap)
-    
+    if not jit: return TypedHeap
     return nb.experimental.jitclass(fields)(TypedHeap)
 
 def print_heap(arr):
@@ -169,93 +171,34 @@ def print_heap(arr):
     
 if __name__ == '__main__':
     from time import time
-    def f(self, x, y): return x - y
-    IntHeap = TypedHeap(f, np.float32)
-    ints = IntHeap(128)
     
-    x = np.arange(20)
-    np.random.shuffle(x)
-
-    for i in x: ints.push(i)
-
-
-    aaaa
-    IntHeap = TypedHeap(np.int32)
-    ints = IntHeap(128)
+    FloatHeap = TypedHeap(np.float64, jit=True)
+    ints = FloatHeap(16)
     
-    
-    abcd
-    
-    points.push(None, np.void((5,5), dtype=t_point))
-    points.push(None, np.void((6,6), dtype=t_point))
-    points.push(None, np.void((4,4), dtype=t_point))
-    
-    abcd
-    FloatHeap = TypedHeap(np.float32)
-    heap = FloatHeap(cap=128)
-    
-
-    ks = np.random.rand(1024000).astype(np.float32)
-
-    @nb.njit
-    def test(points, ks):
-        for i in range(1024000):
-            points.push(ks[i])
-        for i in range(1024000):
-            points.pop()
-
-    points = FloatHeap(1024000+1)
-    test(points, ks)
-    
-    points.clear()
-    start = time()
-    test(points, ks)
-    print(time()-start)
-
-    abcd
-    
-    
-    PointMemory = TypedMemory(t_point)
-    points = PointMemory()
-    
-    PointHeap = TypedHeap(np.float32, PointMemory)
-    ph = PointHeap(128, points)
-    
-    '''
-    points = PointHeap(1024001)
-    ks = np.random.rand(1024000).astype(np.float32)
+    # hist = np.load('hist.npy')
+    hist = np.random.rand(1000000)
     
     @nb.njit
-    def test(points, ks):
-        for i in range(1024000):
-            points.push(ks[i], (1,2))
-        for i in range(1024000):
-            points.pop()
-            
-    test(points, ks)
-    points.clear()
-    start = time()
-    test(points, ks)
-    print(time()-start)
-    '''
+    def test(hist):
+        points = FloatHeap(128)
+        for i in range(1000000): points.push(np.random.rand())
+        for i in range(1000000): points.pop()
+
+    from heapq import heappush, heappop
     
-    '''
-    test_data = np.random.randint(0, 100, 100000)
-    heap = Heap(len(test_data))
+    def heaptest(hist):
+        lst = []
+        for i in hist: heappush(lst, i)
+        for i in hist: heappop(lst)
 
-    @njit
-    def test(heap, test_data):
-        for i in test_data:
-            heap.add(i)
-        for i in range(len(test_data)):
-             heap.pop()
 
-    from time import time
-
-    #test(heap, test_data)
-    #heap.size = 0
+    test(hist)
 
     start = time()
-    #test(heap, test_data)
+    test(hist)
     print(time()-start)
-    '''
+
+    hist = hist.tolist()
+    start = time()
+    heaptest(hist)
+    print(time()-start)
