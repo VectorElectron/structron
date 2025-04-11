@@ -1,98 +1,110 @@
 import numpy as np
 import numba as nb
+from numba.experimental import structref
+from numba.core.extending import overload_method
 
-class Memory: # [rep] Memory->TypedMemory
-    def __init__(self, dtype, cap=128): # [rep] , dtype=np.uint32->
-        self.idx = np.arange(1, cap+1, dtype=np.int32)
+@nb.njit(cache=True)
+def expand(self):
+    self.cont = np.concatenate((self.cont, self.cont))
+    self.idx = self.cont['idx']
+    self.body = self.cont['body']
+    self.idx[self.cap:] = np.arange(self.cap+1, self.cap*2+1, dtype=np.int32)
+    self.cur = self.cap
+    self.cap *= 2
+    # self.tail = self.cap - 1
+
+@nb.njit(cache=True)
+def push(self, obj):
+    if self.size == self.cap:
+        self.expand()
+    self.size += 1
+    cur = self.cur
+    self.cur = self.idx[cur]
+    self.body[cur] = obj
+    return cur
+
+@nb.njit(cache=True)
+def __getitem__(self, idx):
+    return self.body[idx]
+
+@nb.njit(cache=True)
+def __len__(self):
+    return self.size
+
+@nb.njit(cache=True)
+def pop(self, idx):
+    if self.size==self.cap:
+        self.cur = idx
+    self.size -= 1
+    self.idx[idx] = self.cur
+    self.cur = idx
+    # self.idx[self.tail] = idx
+    # self.tail = idx
+    return self.body[idx]
+
+def TypedMemory(BaseStruct, BaseProxy, dtype):
+    struct = structref.register(BaseStruct)
+    
+    idxtype = np.dtype([('idx', np.int32), ('body', dtype)])
+    t_memory = struct([('cont', nb.from_dtype(idxtype)[:]),
+                ('idx', nb.int32[:]), ('cur', nb.int32),
+                ('cap', nb.uint32), ('size', nb.uint32),
+                ('body', nb.from_dtype(dtype)[:])])
+
+    temp = ''' # add attrs
+        def get_%s(self): return self.%s
+        def set_%s(self, v): self.%s = v
+        BaseProxy.%s = property(nb.njit(get_%s), nb.njit(set_%s))
+        del get_%s, set_%s'''
+    temp = '\n'.join([i.strip() for i in temp.split('\n')])
+
+    for i in ('idx', 'body', 'cap', 'cur', 'size'): exec(temp%((i,)*9))
+
+    BaseProxy.push = push
+    BaseProxy.pop = pop
+    BaseProxy.__getitem__ = __getitem__
+    BaseProxy.__len__ = __len__
+    
+    structref.define_boxing(struct, BaseProxy)
+
+    overload_method(struct, "push")(lambda self, obj: push.py_func)
+    overload_method(struct, "expand")(lambda self: expand.py_func)
+    overload_method(struct, "pop")(lambda self, idx: pop.py_func)
+    
+    @nb.njit(cache=True)
+    def init(cap=16):
+        self = structref.new(t_memory)    
+        self.cont = np.empty(cap, dtype=idxtype)
+        self.idx = self.cont['idx']
+        self.body = self.cont['body']
+        self.idx[:] = np.arange(1, cap+1, dtype=np.int32)
         self.cur = 0 # next blank
         self.cap = cap
         self.size = 0
+        return self
         # self.tail = cap-1
-        self.body = np.zeros(cap, dtype)
 
-    def expand(self):
-        idx = np.arange(1, self.cap*2+1, dtype=np.int32)
-        self.body = np.concatenate((self.body, self.body))
-        idx[:self.cap] = self.idx
-        self.idx = idx
-        self.cur = self.cap
-        self.cap *= 2
-        # self.tail = self.cap - 1
-    
-    def push(self, obj):
-        if self.size == self.cap:
-            self.expand()
-        self.size += 1
-        cur = self.cur
-        self.cur = self.idx[cur]
-        self.body[cur] = obj # [attr] self.body[cur]<-obj
-        return cur
+    def __new__(cls, cap=16):
+        return init(cap)
 
-    def __getitem__(self, index):
-        return self.body[index]
-
-    def __len__(self):
-        return self.size
-
-    def pop(self, idx):
-        if self.size==self.cap:
-            self.cur = idx
-        self.size -= 1
-        self.idx[idx] = self.cur
-        self.cur = idx
-        # self.idx[self.tail] = idx
-        # self.tail = idx
-        return self.body[idx]
-'''
-import inspect
-def sub_class(cls, dtype, **key):
-    names = dtype.names if hasattr(dtype, 'names') else None
-    code = inspect.getsource(cls)
-    lines = []
-    for line in code.split('\n'):
-        if '[if' in line:
-            k = line.split('[if')[1].split(']')[0][1:]
-            if key.get(k, False)==False: continue
-        if '[rep]' in line:
-            what = line.split('[rep]')[1].strip()
-            line = line.replace(*what.split('->'))
-        elif '[swap]' in line:
-            if not names is None:
-                cur = line.split('[swap]')[1].strip()
-                a, b = [i.strip() for i in cur.split('<->')]
-                prefix = line[:line.index(a)]
-                lines.append(prefix + '_a, _b = %s, %s'%(a, b))
-                for i in names:
-                    lines.append(prefix + '_a.%s, _b.%s = _b.%s, _a.%s'%(i,i,i,i))
-                line = prefix + '# swap'
-        elif '[attr]' in line:
-            if not names is None:
-                cur = line.split('[attr]')[1].strip()
-                a, b = [i.strip() for i in cur.split('<-')]
-                prefix = line[:line.index(a)]
-                lines.append(prefix + '_ = ' + a)
-                line = ['_.'+i for i in names]
-                line = prefix + ','.join(line) + ' = '+ b
-        lines.append(line)
-    return '\n'.join(lines)
-'''
-def TypedMemory(dtype):
-    fields = [('idx', nb.int32[:]), ('cur', nb.int32),
-              ('cap', nb.uint32), ('size', nb.uint32),
-              ('body', nb.from_dtype(dtype)[:])]
-    
-    class TypedMemory(Memory):
-        _init_ = Memory.__init__
-        def __init__(self, cap=128):
-            self._init_(dtype, cap)
-    return nb.experimental.jitclass(fields)(TypedMemory)
+    BaseProxy.__new__ = __new__
+    return init
 
 if __name__ == '__main__':
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
+    from time import time
+
+    class IntMemoryStruct(nb.types.StructRef): pass
+    class IntMemoryProxy(structref.StructRefProxy): pass
     
-    IntMemory = TypedMemory(np.int32)
-    ints = IntMemory(2)
-    abcd
+    IntMemory = TypedMemory(IntMemoryStruct, IntMemoryProxy, np.int32)
+    start = time()
+    ints = IntMemory(16)
+    ints.push(5)
+    ints.pop(0)
+    print(time()-start)
+    aaaa
+    
     IntMemory = TypedMemory(np.uint32)
     points = PointMemory(2)
     lst = IntMemory(2)

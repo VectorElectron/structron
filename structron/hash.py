@@ -1,152 +1,230 @@
 import numba as nb
 import numpy as np
+from numba.experimental import structref
+from numba.core.extending import overload_method
 
-mode = 'set'
-
-class Hash:
-    def __init__(self, ktype=np.int32, vtype=None, cap=16):
-        self.cap = cap
-        self.size = 0
-        # 0:blank, 1:has, 2:removed
-        # self.msk = np.zeros(cap, dtype=np.uint8)
-        self.idx = np.zeros(cap, dtype=ktype)
-        if mode=='map':
-            self.body = np.zeros(cap, dtype=vtype)
-    
-    # insert at 0 or 2
+def build_push(mode='set'):
+    @nb.njit(cache=True)
     def push(self, obj, value=None):
         cap = self.cap
         k = 31*hash(obj)%cap
         # msk = self.msk
-        idx = self.idx
+        msk = self.idx['msk']
+        body = self.idx['body']
+        
         for i in range(cap):
             cur = (k+i)%cap
-            if idx[cur].msk!=1: break
-            if idx[cur].key==obj: return
+            if msk[cur]!=1: break
+            if mode=='set':
+                if body[cur]==obj: return
+            if mode=='map':
+                if body[cur]['key']==obj: return
         
         # if i>100: print(i, cap, self.size/cap)
-        idx[cur].key = obj
+        if mode == 'set':
+            body[cur] = obj
         if mode == 'map':
-            self.body[cur] = value
-        idx[cur].msk = 1
+            body[cur]['key'], body[cur]['value'] = obj, value
+        msk[cur] = 1
         self.size += 1
         if self.size > cap*2/3:
             self.expand()
-    
+    return push
+
+push_set = build_push('set')
+push_map = build_push('map')
+
+def build_has(mode='set'):
+    @nb.njit(cache=True)
     def has(self, obj):
         cap = self.cap
         k = 31*hash(obj)%cap
-        idx = self.idx
+        msk = self.msk
+        body = self.body
         for i in range(cap):
             cur = (k+i)%cap
-            if idx[cur].msk==0: return False
-            if idx[cur].msk==2: continue
-            if idx[cur].key==obj: return True
+            if msk[cur]==0: return False
+            if msk[cur]==2: continue
+            if mode=='set':
+                if body[cur]==obj: return True
+            if mode=='map':
+                if body[cur]['key']==obj: return True
         return False
+    return has
 
+has_set = build_has('set')
+has_map = build_has('map')
+
+def build_pop(mode='set'):
+    @nb.njit(cache=True)
     def pop(self, obj):
         cap = self.cap
         k = 31*hash(obj)%cap
-        idx = self.idx
+        msk = self.idx['msk']
+        body = self.idx['body']
         
         for i in range(cap):
             cur = (k+i)%cap
-            if idx[cur].msk==0: return
-            if idx[cur].msk==2: continue
-            if idx[cur].key==obj:
-                idx[cur].msk = 2
+            if msk[cur]==0: return
+            if msk[cur]==2: continue
+            if mode=='set': key = body[cur]
+            if mode=='map': key = body[cur]['key']
+            if key==obj:
+                msk[cur] = 2
                 self.size -= 1
-                if mode=='map':
+                if mode=='set':
                     return self.body[cur]
+                if mode=='map':
+                    return self.body[cur]['body']
                 return None
         return
+    return pop
 
+pop_set = build_pop('set')
+pop_map = build_pop('map')
+
+def build_get(mode='set'):
+    @nb.njit(cache=True)
     def get(self, obj):
         cap = self.cap
         k = 31*hash(obj)%cap
-        idx = self.idx
+        msk = self.idx['msk']
+        body = self.idx['body']
         
         for i in range(cap):
             cur = (k+i)%cap
-            if idx[cur].msk==0: return
-            if idx[cur].msk==2: continue
-            if idx[cur].key==obj:
-                if mode=='map':
-                    return self.body[cur]
-                return
+            if msk[cur]==0: return
+            if msk[cur]==2: continue
+            if body[cur]['key']==obj:
+                return body[cur]['value']
         return
-    
+    return get
+
+get_set = build_get('set')
+get_map = build_get('map')
+
+def build_expand(mode='set'):
+    @nb.njit(cache=True)
     def expand(self):
         # print('in')
         oidx = self.idx
-        if mode=='map':
-            obody = self.body
-        cap = self.cap * 2
-        self.cap = cap
+        omsk, obody = oidx['msk'], oidx['body']
+        
+        cap = self.cap = self.cap * 2
         self.size = 0
         idx = np.zeros(cap, dtype=oidx.dtype)
-        if mode=='map':
-            body = np.zeros(cap, dtype=obody.dtype)
+        body = idx['body']
+        msk = idx['msk']
+        
         for i in range(cap//2):
-            if oidx[i].msk!=1: continue
-            obj = oidx[i].key
-            cap = self.cap
-            k = 31*hash(obj)%cap
+            if omsk[i]!=1: continue
+            obj = obody[i]
+            if mode=='set': key = obj
+            if mode=='map': key = obj['key']
+            k = 31*hash(key)%cap
             for j in range(cap):
                 cur = (k+j)%cap
-                if idx[cur].msk!=1: break
-            idx[cur].key = obj
-            idx[cur].msk = 1
-            if mode=='map': body[cur] = obody[i]
+                if msk[cur]!=1: break
+            body[cur] = obj
+            msk[cur] = 1
             self.size += 1
         self.idx = idx
-        if mode=='map': self.body = body
+        self.msk = msk
+        self.body = body
         # print(self.cap, 'out')
+    return expand
 
-    def __getitem__(self, key):
-        return self.get(key)
+expand_set = build_expand(mode='set')
+expand_map = build_expand(mode='map')
 
-    def __setitem__(self, key, val): 
-        self.push(key, val)
+@nb.njit(cache=True)
+def __getitem__(self, key):
+    return self.get(key)
+
+@nb.njit(cache=True)
+def __setitem__(self, key, val): 
+    self.push(key, val)
+
+@nb.njit(cache=True)
+def __len__(self):
+    return self.size
+
+
+def TypedHash(BaseStruct, BaseProxy, ktype, vtype=None):
+    if ktype is None: mode = 'set'
+    else:
+        vtype = np.dtype([('key', ktype), ('value', vtype)])
+        mode = 'map'
+
+    struct = structref.register(BaseStruct)
+
+    idxtype = np.dtype([('msk', np.uint8), ('body', vtype)])
     
-    def __len__(self):
-        return self.size
-
-    def toarray(self):
-        return self.idx.key[self.idx.msk==1]
-
-def TypedHash(ktype, vtype=None):
-    import inspect
-    global mode
-    mode = 'set' if vtype is None else 'map'
-
-    key = np.dtype([('msk', np.uint8), ('key', ktype)])
-    fields = [('cap', nb.uint32), ('size', nb.uint32),
-              ('idx', nb.from_dtype(key)[:])]
+    t_hash = struct([('idx', nb.from_dtype(idxtype)[:]),
+                     ('msk', nb.uint8[:]), ('body', nb.from_dtype(vtype)[:]),
+                     ('cap', nb.uint32), ('size', nb.uint32)])
     
-    if vtype: fields.append(('body', nb.from_dtype(vtype)[:]))
+    push = {'set': push_set, 'map': push_map}[mode]
+    pop = {'set': pop_set, 'map': pop_map}[mode]
+    has = {'set': has_set, 'map': has_map}[mode]
+    expand = {'set': expand_set, 'map': expand_map}[mode]
+    get = {'set': get_set, 'map': get_map}[mode]
+    
+    temp = ''' # add attrs
+        def get_%s(self): return self.%s
+        def set_%s(self, v): self.%s = v
+        BaseProxy.%s = property(nb.njit(get_%s), nb.njit(set_%s))
+        del get_%s, set_%s'''
+    temp = '\n'.join([i.strip() for i in temp.split('\n')])
 
-    exec(inspect.getsource(Hash), dict(globals()), locals())
+    for i in ('msk', 'body', 'cap', 'size'): exec(temp%((i,)*9))
+
+    BaseProxy.expand = expand
+    BaseProxy.push = push
+    BaseProxy.pop = pop
+    BaseProxy.has = has
+    BaseProxy.get = get
+    BaseProxy.__getitem__ = __getitem__
+    BaseProxy.__setitem__ = __setitem__
+    BaseProxy.__len__ = __len__
+
+    structref.define_boxing(struct, BaseProxy)
+
+    overload_method(struct, "push")(lambda self, obj, value=None: push.py_func)
+    overload_method(struct, "pop")(lambda self: pop.py_func)
+    overload_method(struct, "expand")(lambda self: expand.py_func)
+    overload_method(struct, "get")(lambda self, obj: get.py_func)
+    overload_method(struct, "has")(lambda self, obj: has.py_func)
+
+    @nb.njit(cache=True)
+    def init(cap=16):
+        self = structref.new(t_hash)
+        self.cap = cap
+        self.size = 0
+        # 0:blank, 1:has, 2:removed
+        # self.msk = np.zeros(cap, dtype=np.uint8)
+        self.idx = np.zeros(cap, dtype=idxtype)
+        self.msk = self.idx['msk']
+        self.body = self.idx['body']
+        return self
+
+    def __new__(cls, cap=16):
+        return init(cap)
     
-    class TypedHash(locals()['Hash']):
-        _init_ = Hash.__init__
-        def __init__(self, cap):
-            self._init_(key, vtype, cap)
-    
-    return nb.experimental.jitclass(fields)(TypedHash)
+    BaseProxy.__new__ = __new__
+    return init
     
 def print_hash(hs):
     for m,v in zip(hs.msk, hs.key):
         print(m,v)
 
 if __name__ == '__main__':
-    from time import time
-    t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-
-    PointHash = TypedHash(np.float32, t_point)
-    points = PointHash(4)
-    points[1] = np.void((1,1), t_point)
-    points[2] = np.void((2,2), t_point)
+    class IntHashStruct(nb.types.StructRef): pass
+    class IntHashProxy(structref.StructRefProxy): pass
+    IntHash = TypedHash(IntHashStruct, IntHashProxy, np.int32, np.int32)
+    
+    ints = IntHash(4)
+    
     abcd
     
     '''

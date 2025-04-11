@@ -1,39 +1,80 @@
 import numpy as np
 import numba as nb
+from numba.experimental import structref
+from numba.core.extending import overload_method
 
-mode = 'map'
+@nb.njit(cache=True)
+def expand(self):
+    idx = np.zeros(self.cap*2, dtype=self.idx.dtype)
+    idx.id[:] = np.arange(1, self.cap*2+1, dtype=np.int32)
+    self.body = idx['body']
+    idx[:self.cap] = self.idx
+    self.idx = idx
+    self.cur = self.cap
+    self.cap *= 2
+    self.tail = self.cap - 1
 
-class AVLTree:
-    def __init__(self, ktype=np.int32, vtype=None, cap=16):
-        # [attr]
-        self.idx = np.zeros(cap, dtype=ktype)
-        if mode!='set':
-            self.body = np.zeros(cap, dtype=vtype)
-            self.buf = np.zeros(1, dtype=vtype)
-        self.idx.id[:] = np.arange(1, cap+1, dtype=np.int32)
-        # for i in range(cap): self.idx[i].id = i+1
-        self.root = -1
-        self.cur = 0
-        self.cap = cap
-        self.size = 0
-        self.tail = cap-1
+@nb.njit(cache=True)
+def rotate(self, i0, b0, i1, b1, i2, b2, i3):
+    idx = self.idx
+    n0, n1, n2, n3 = idx[i0], idx[i1], idx[i2], idx[i3]
 
-        self.hist = np.zeros(256, dtype=np.int32)
-        self.hist[-1] = -1
-        self.dir = np.zeros(256, dtype=np.int32)
+    if b1==-1 and b2==-1:
+        n1.left = n2.right
+        n2.right = i1
+        n1.bal = n2.bal = 0
+        nroot = i2
+        
+    if b1==1 and b2==1:
+        n1.right = n2.left
+        n2.left = i1
+        n1.bal = n2.bal = 0
+        nroot = i2
+
+    b3 = n3.bal
+    if b1==-1 and b2==1:
+        n1.left = n3.right
+        n3.right = i1
+        n2.right = n3.left
+        n3.left = i2
+        
+        n3.bal = 0
+        n1.bal = 1 if b3==-1 else 0
+        n2.bal = -1 if b3==1 else 0
+        nroot = i3
+        
+    if b1==1 and b2==-1:
+        n1.right = n3.left
+        n3.left = i1
+        n2.left = n3.right
+        n3.right = i2
+        
+        n3.bal = 0
+        n1.bal = -1 if b3==1 else 0
+        n2.bal = 1 if b3==-1 else 0
+        nroot = i3
     
-    def expand(self):
-        idx = np.zeros(self.cap*2, dtype=self.idx.dtype)
-        idx.id[:] = np.arange(1, self.cap*2+1, dtype=np.int32)
-        if mode!='set':
-            self.body = np.concatenate((self.body, self.body))
-        
-        idx[:self.cap] = self.idx
-        self.idx = idx
-        self.cur = self.cap
-        self.cap *= 2
-        self.tail = self.cap - 1
-        
+    if b1==-1 and b2==0:
+        n1.left = n2.right
+        n2.right = i1
+        n2.bal = 1
+        n1.bal = -1
+        nroot = i2
+
+    if b1==1 and b2==0:
+        n1.right = n2.left
+        n2.left = i1
+        n2.bal = -1
+        n1.bal = 1
+        nroot = i2
+    
+    if i0==-1: self.root = nroot
+    elif b0==-1: n0.left = nroot
+    elif b0==1: n0.right = nroot
+    return b2 == 0
+
+def build_push(mode='set'):
+    @nb.njit(cache=True)
     def push(self, k, v=None):
         cur = parent = self.root
         if cur==-1:
@@ -43,26 +84,23 @@ class AVLTree:
         idx = self.idx
         hist = self.hist
         dir = self.dir
-        if mode=='eval':
-            body = self.body
-            key = self.eval(k)
-        if mode=='comp':
-            body = self.body
-        if mode=='set': key = k
-        if mode=='map': key = k
+        body = self.body
+        
+        if mode=='map': ek = k
+        if mode=='set' or mode=='eval': ek = self.eval(k)
+        
         n = 0
 
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
-            if mode=='set': br = key - ilrk.key
-            if mode=='map': br = key - ilrk.key
-            if mode=='eval': br = key - self.eval(body[cur])
             if mode=='comp': br = self.comp(k, body[cur])
+            else: br = ek - self.eval(body[cur])
+            
             if br==0: # found
-                if mode=='map': self.body[cur] = v
-                if mode=='eval': self.body[cur] = k
-                if mode=='comp': self.body[cur] = k
+                if mode=='map':
+                    body[cur]['key'], body[cur]['value'] = k, v
+                else: body[cur] = k
                 return cur
             
             hist[n] = cur
@@ -95,25 +133,61 @@ class AVLTree:
                     hist[i], dir[i], hist[i+1], dir[i+1], hist[i+2])
                 break
         return cur
-    
-    def pop(self, key):
+    return push
+
+push_set = build_push('set')
+push_map = build_push('map')
+push_eval = build_push('eval')
+push_comp = build_push('comp')
+
+def build_alloc(mode='map'):
+    @nb.njit(cache=True)
+    def alloc(self, k, v=None):
+        if self.size == self.cap:
+            self.expand()
+
+        body = self.body
+        self.size += 1
+        cur = self.cur
+        
+        self.cur = self.idx[cur].id
+
+        if mode=='map':
+            body[cur]['key'], body[cur]['value'] = k, v
+        else: body[cur] = k
+            
+        ilrk = self.idx[cur]
+        ilrk.left = -1
+        ilrk.right = -1
+        ilrk.bal = 0
+        return cur
+    return alloc
+
+alloc_map = build_alloc('map')
+alloc_set = build_alloc('set')
+
+def build_pop(mode='set'):
+    @nb.njit(cache=True)
+    def pop(self, k):
         parent = -1
         cur = self.root
         
         hist = self.hist
         dir = self.dir
         idx = self.idx
-        if mode!='set': body = self.body
-        if mode=='eval': key = self.eval(key)
+        body = self.body
+
+        if mode=='map': ek = k
+        if mode=='set' or mode=='eval': ek = self.eval(k)
+        
         n = 0
 
         # find the node
         while cur!=-1:
             ilrk = idx[cur]
-            if mode=='set': br = key - ilrk.key
-            if mode=='map': br = key - ilrk.key
-            if mode=='eval': br = key - self.eval(body[cur])
-            if mode=='comp': br = self.comp(key, body[cur])
+
+            if mode=='comp': br = self.comp(k, body[cur])
+            else: br = ek - self.eval(body[cur])
             
             hist[n] = cur
             if br==0: break
@@ -131,7 +205,7 @@ class AVLTree:
         node = idx[cur] # the node to pop
 
         n0 = n
-        if mode!='set': self.buf[0] = body[cur]
+        self.buf[0] = body[cur]
         
         # pnode = idx[hist[n-1]]
         
@@ -192,112 +266,73 @@ class AVLTree:
                 self.rotate(hist[i-1], dir[i-1],
                     hist[i], -dir[i], i2, n2.bal, i3)
                 if stop: break
-        if mode!='set': return self.buf[0]
-    
-    def rotate(self, i0, b0, i1, b1, i2, b2, i3):
-        idx = self.idx
-        n0, n1, n2, n3 = idx[i0], idx[i1], idx[i2], idx[i3]
+        if mode=='map': return self.buf[0]['value']
+        else: return self.buf[0]
+    return pop
 
-        if b1==-1 and b2==-1:
-            n1.left = n2.right
-            n2.right = i1
-            n1.bal = n2.bal = 0
-            nroot = i2
-            
-        if b1==1 and b2==1:
-            n1.right = n2.left
-            n2.left = i1
-            n1.bal = n2.bal = 0
-            nroot = i2
+pop_set = build_pop('set')
+pop_map = build_pop('map')
+pop_eval = build_pop('eval')
+pop_comp = build_pop('comp')
 
-        b3 = n3.bal
-        if b1==-1 and b2==1:
-            n1.left = n3.right
-            n3.right = i1
-            n2.right = n3.left
-            n3.left = i2
-            
-            n3.bal = 0
-            n1.bal = 1 if b3==-1 else 0
-            n2.bal = -1 if b3==1 else 0
-            nroot = i3
-            
-        if b1==1 and b2==-1:
-            n1.right = n3.left
-            n3.left = i1
-            n2.left = n3.right
-            n3.right = i2
-            
-            n3.bal = 0
-            n1.bal = -1 if b3==1 else 0
-            n2.bal = 1 if b3==-1 else 0
-            nroot = i3
-        
-        if b1==-1 and b2==0:
-            n1.left = n2.right
-            n2.right = i1
-            n2.bal = 1
-            n1.bal = -1
-            nroot = i2
+@nb.njit(cache=True)
+def free(self, idx):
+    if self.size==self.cap:
+        self.cur = idx
+    self.size -= 1
+    self.idx[self.tail].id = idx
+    self.tail = idx
+    return self.body[idx]
 
-        if b1==1 and b2==0:
-            n1.right = n2.left
-            n2.left = i1
-            n2.bal = -1
-            n1.bal = 1
-            nroot = i2
-        
-        if i0==-1: self.root = nroot
-        elif b0==-1: n0.left = nroot
-        elif b0==1: n0.right = nroot
-        return b2 == 0
-                
-    def index(self, key):
+def build_index(mode):
+    @nb.njit(cache=True)
+    def index(self, k):
         cur = self.root
         idx = self.idx
-        
-        if mode=='eval':
-            body = self.body
-            key = self.eval(key)
-        if mode=='comp': body = self.body
+        body = self.body
+
+        if mode=='map': ek = k
+        if mode=='set' or mode=='eval': ek = self.eval(k)
         
         while cur != -1:
             ilrk = idx[cur]
-            if mode=='set': br = key - ilrk.key
-            if mode=='map': br = key - ilrk.key
-            if mode=='eval': br = key - self.eval(body[cur])
-            if mode=='comp': br = self.comp(key, body[cur])
+            if mode=='comp': br = self.comp(k, body[cur])
+            else: br = ek - self.eval(body[cur])
 
             if br==0: return cur
-            # if mode!='set': return body[cur]
-            # return cur
             if br<0: cur = ilrk.left
             if br>0: cur = ilrk.right
         return -1
+    return index
 
-    def has(self, key):
-        return self.index(key) >= 0
-        
-    def left(self, key):
+index_set = build_index('set')
+index_map = build_index('map')
+index_eval = build_index('eval')
+index_comp = build_index('comp')
+
+@nb.njit(cache=True)
+def has(self, k):
+    return self.index(k) >= 0
+
+def build_left(mode='set'):
+    @nb.njit(cache=True)
+    def left(self, k):
         cur = self.root
         idx = self.idx
         hist = self.hist
         hist[-2] = 0 # level
         self.dir[-2] = -1
+        body = self.body
         
-        if mode=='eval':
-            body = self.body
-            key = self.eval(key)
-        if mode=='comp': body = self.body
+        if mode=='map': ek = k
+        if mode=='set' or mode=='eval': ek = self.eval(k)
 
         rst = -1
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
-            if mode=='set': br = key - ilrk.key
-            if mode=='map': br = key - ilrk.key
-            if mode=='eval': br = key - self.eval(body[cur])
-            if mode=='comp': br = self.comp(key, body[cur])
+            if mode=='comp': br = self.comp(k, body[cur])
+            else: br = ek - self.eval(body[cur])
             
             if br<=0: # left
                 cur = ilrk.left
@@ -307,27 +342,32 @@ class AVLTree:
                 hist[-2] += 1
                 cur = ilrk.right
         return rst
+    return left
 
-    def right(self, key):
+left_set = build_left('set')
+left_map = build_left('map')
+left_eval = build_left('eval')
+left_comp = build_left('comp')
+
+def build_right(mode='set'):
+    @nb.njit(cache=True)
+    def right(self, k):
         cur = self.root
         idx = self.idx
         hist = self.hist
         hist[-2] = 0 # level
         self.dir[-2] = 1
+        body = self.body
         
-        if mode=='eval':
-            body = self.body
-            key = self.eval(key)
-        if mode=='comp': body = self.body
+        if mode=='map': ek = k
+        if mode=='set' or mode=='eval': ek = self.eval(k)
 
         rst = -1
         while cur != -1:
             parent = cur
             ilrk = idx[cur]
-            if mode=='set': br = key - ilrk.key
-            if mode=='map': br = key - ilrk.key
-            if mode=='eval': br = key - self.eval(body[cur])
-            if mode=='comp': br = self.comp(key, body[cur])
+            if mode=='comp': br = self.comp(k, body[cur])
+            else: br = ek - self.eval(body[cur])
             
             if br<0: # left
                 rst = cur
@@ -337,17 +377,22 @@ class AVLTree:
             if br>=0: # right
                 cur = ilrk.right
         return rst
+    return right
 
-    def next(self):
-        idx = self.idx
-        hist = self.hist
-        dir = self.dir[-2]
+right_set = build_right('set')
+right_map = build_right('map')
+right_eval = build_right('eval')
+right_comp = build_right('comp')
 
-        if hist[-2] == 0: return -1
-        
+@nb.njit(cache=True)
+def next(self):
+    idx = self.idx
+    hist = self.hist
+    dir = self.dir[-2]
+
+    while hist[-2] >0:
         hist[-2] -= 1
         cur = hist[hist[-2]]
-
         
         if dir==1: hist[-3] = idx[cur].right
         if dir==-1: hist[-3] = idx[cur].left
@@ -358,128 +403,251 @@ class AVLTree:
             if dir==1: hist[-3] = idx[hist[-3]].left
             if dir==-1: hist[-3] = idx[hist[-3]].right
 
-        return cur
-    
-    def min(self):
-        cur = self.root
-        idx = self.idx
-        hist = self.hist
-        hist[-2] = 0 # level
-        self.dir[-2] = 1
+        yield cur
 
-        while cur != -1:
-            rst = cur
-            hist[hist[-2]] = cur
-            hist[-2] += 1
-            ilrk = idx[cur]
-            cur = ilrk.left
-        return rst
-    
-        if mode!='eval': return idx[rst].key
-        if mode=='eval': return self.eval(self.body[rst])
+@nb.njit(cache=True)
+def min(self):
+    rst = cur = self.root
+    idx = self.idx
+    hist = self.hist
+    hist[-2] = 0 # level
+    self.dir[-2] = 1
 
-    def max(self):
-        cur = self.root
-        idx = self.idx
-        hist = self.hist
-        hist[-2] = 0 # level
-        self.dir[-2] = -1
+    while cur != -1:
+        rst = cur
+        hist[hist[-2]] = cur
+        hist[-2] += 1
+        ilrk = idx[cur]
+        cur = ilrk.left
+    return rst
 
-        while cur != -1:
-            rst = cur
-            hist[hist[-2]] = cur
-            hist[-2] += 1
-            ilrk = idx[cur]
-            cur = ilrk.right
-        return rst
-    
-        if mode!='eval': return idx[rst].key
-        if mode=='eval': return self.eval(self.body[rst])
+@nb.njit(cache=True)
+def max(self):
+    rst = cur = self.root
+    idx = self.idx
+    hist = self.hist
+    hist[-2] = 0 # level
+    self.dir[-2] = -1
+
+    while cur != -1:
+        rst = cur
+        hist[hist[-2]] = cur
+        hist[-2] += 1
+        ilrk = idx[cur]
+        cur = ilrk.right
+    return rst
+
+@nb.njit(cache=True)
+def __getitem__(self, k):
+    idx = self.index(k)
+    if idx>=0: return self.body[idx]['value']
+
+@nb.njit(cache=True)
+def __setitem__(self, k, v): 
+    self.push(k, v)
+
+@nb.njit(cache=True)
+def __len__(self):
+    return self.size
+
+@nb.njit(cache=True)
+def __lshift__(self, k):
+    self.left(k)
+    idx = self.idx
+    hist = self.hist
+    dir = self.dir[-2]
+
+    while hist[-2] >0:
+        hist[-2] -= 1
+        cur = hist[hist[-2]]
         
-    def alloc(self, key, val=None):
-        if self.size == self.cap:
-            self.expand()
-            
-        self.size += 1
-        cur = self.cur
+        if dir==1: hist[-3] = idx[cur].right
+        if dir==-1: hist[-3] = idx[cur].left
+
+        while hist[-3]!=-1:
+            hist[hist[-2]] = hist[-3]
+            hist[-2] += 1
+            if dir==1: hist[-3] = idx[hist[-3]].left
+            if dir==-1: hist[-3] = idx[hist[-3]].right
+
+        yield cur
+
+@nb.njit(cache=True)
+def __rshift__(self, k):
+    self.right(k)
+    idx = self.idx
+    hist = self.hist
+    dir = self.dir[-2]
+
+    while hist[-2] >0:
+        hist[-2] -= 1
+        cur = hist[hist[-2]]
         
-        self.cur = self.idx[cur].id
-        if mode=='map': self.body[cur] = val
-        if mode=='eval': self.body[cur] = key
-        if mode=='comp': self.body[cur] = key
-            
-        ilrk = self.idx[cur]
-        ilrk.left = -1
-        ilrk.right = -1
-        ilrk.bal = 0
-        if mode=='set': ilrk.key = key
-        if mode=='map': ilrk.key = key
-        return cur
-    
-    def __getitem__(self, key):
-        idx = self.index(key)
-        if idx>=0: return self.body[idx]
+        if dir==1: hist[-3] = idx[cur].right
+        if dir==-1: hist[-3] = idx[cur].left
 
-    def __setitem__(self, key, val): 
-        self.push(key, val)
-    
-    def __len__(self):
-        return self.size
+        while hist[-3]!=-1:
+            hist[hist[-2]] = hist[-3]
+            hist[-2] += 1
+            if dir==1: hist[-3] = idx[hist[-3]].left
+            if dir==-1: hist[-3] = idx[hist[-3]].right
 
-    def __lshift__(self, key):
-        return self.left(key)
+        yield cur
 
-    def __rshift__(self, key):
-        return self.right(key)
+@nb.njit(cache=True)
+def items(self):
+    self.min()
+    idx = self.idx
+    hist = self.hist
+    dir = self.dir[-2]
 
-    def free(self, idx):
-        if self.size==self.cap:
-            self.cur = idx
-        self.size -= 1
-        self.idx[self.tail].id = idx
-        self.tail = idx
-        if mode!='set':
-            return self.body[idx]
+    while hist[-2] >0:
+        hist[-2] -= 1
+        cur = hist[hist[-2]]
+        
+        if dir==1: hist[-3] = idx[cur].right
+        if dir==-1: hist[-3] = idx[cur].left
+
+        while hist[-3]!=-1:
+            hist[hist[-2]] = hist[-3]
+            hist[-2] += 1
+            if dir==1: hist[-3] = idx[hist[-3]].left
+            if dir==-1: hist[-3] = idx[hist[-3]].right
+
+        yield idx[cur]['body']
+
+@nb.njit(cache=True)
+def __iter__(self):
+    self.min()
+    idx = self.idx
+    hist = self.hist
+    dir = self.dir[-2]
+
+    while hist[-2] >0:
+        hist[-2] -= 1
+        cur = hist[hist[-2]]
+        
+        if dir==1: hist[-3] = idx[cur].right
+        if dir==-1: hist[-3] = idx[cur].left
+
+        while hist[-3]!=-1:
+            hist[hist[-2]] = hist[-3]
+            hist[-2] += 1
+            if dir==1: hist[-3] = idx[hist[-3]].left
+            if dir==-1: hist[-3] = idx[hist[-3]].right
+
+        yield cur
     
 def istype(obj):
     if isinstance(obj, np.dtype): return True
     return isinstance(obj, type) and isinstance(np.dtype(obj), np.dtype)
     
-def TypedAVLTree(ktype, vtype=None, attr={}):
+def TypedAVLTree(BaseStruct, BaseProxy, ktype=None, vtype=None, attrs={}):
     import inspect
-    global mode
+    if ktype is None:
+        mode = 'set'
+        ktype = lambda self, x: x
     if not istype(ktype):
         n = len(inspect.signature(ktype).parameters)
         mode = 'eval' if n==2 else 'comp'
-    elif vtype is None: mode = 'set'
-    else: mode = 'map'
+    else:
+        vtype = np.dtype([('key', ktype), ('value', vtype)])
+        mode, ktype = 'map', lambda self, x: x['key']
 
-    dtype = [('id', np.int32), ('left', np.int32),
-        ('right', np.int32), ('key', ktype), ('bal', np.int8)]
-    if mode in {'eval', 'comp'}: dtype.pop(-2)
-    ilr = np.dtype(dtype)
-    
-    
-    fields = [('idx', nb.from_dtype(ilr)[:]), ('root', nb.int32), ('cur', nb.int32),
-              ('cap', nb.uint32), ('size', nb.uint32), ('tail', nb.uint32),
-              ('hist', nb.int32[:]), ('dir', nb.int32[:])]
-    if mode in {'map', 'eval', 'comp'}:
-        fields += [('body', nb.from_dtype(vtype)[:]), ('buf', nb.from_dtype(vtype)[:])]
-    for k,v in attr.items(): fields.append((k, nb.from_dtype(v)))
+    struct = structref.register(BaseStruct)
 
-    exec(inspect.getsource(AVLTree), dict(globals()), locals())
+
+    idxtype = np.dtype([('id', np.int32), ('left', np.int32),
+        ('right', np.int32), ('bal', np.int8), ('body', vtype)])
     
-    class TypedAVLTree(locals()['AVLTree']):
-        _init_ = AVLTree.__init__
-        
-        if mode=='eval': eval = ktype
-        if mode=='comp': comp = ktype
-        def __init__(self, cap=16):
-            self._init_(ilr, vtype, cap)
-            
-            
+    t_heap = struct([('idx', nb.from_dtype(idxtype)[:]),
+            ('body', nb.from_dtype(vtype)[:]),
+            ('buf', nb.from_dtype(vtype)[:]), ('root', nb.int32),
+            ('cur', nb.int32), ('cap', nb.uint32),
+            ('size', nb.uint32), ('tail', nb.uint32),
+            ('hist', nb.int32[:]), ('dir', nb.int32[:])] +
+           [(k, nb.from_dtype(v)) for k,v in attrs.items()])
+
+    push = {'set': push_set, 'comp': push_comp, 'map': push_map, 'eval': push_eval}[mode]
+    pop = {'comp': pop_comp, 'set': pop_set, 'map': pop_map, 'eval': pop_eval}[mode]
+    index = {'comp': index_comp, 'set': index_set, 'map': index_map, 'eval': index_eval}[mode]
+    left = {'comp': left_comp, 'set': left_set, 'map': left_map, 'eval': left_eval}[mode]
+    right = {'comp': right_comp, 'set': right_set, 'map': right_map, 'eval': right_eval}[mode]
+
+    alloc = (alloc_set, alloc_map)[mode=='map']
     
-    return nb.experimental.jitclass(fields)(TypedAVLTree)
+    temp = ''' # add attrs
+        def get_%s(self): return self.%s
+        def set_%s(self, v): self.%s = v
+        BaseProxy.%s = property(nb.njit(get_%s), nb.njit(set_%s))
+        del get_%s, set_%s'''
+    temp = '\n'.join([i.strip() for i in temp.split('\n')])
+    
+    for i in ('idx', 'body', 'buf', 'root', 'cur', 'cap', 'size', 'tail'): exec(temp%((i,)*9))
+    for i in attrs: exec(temp%((i,)*9))
+    
+    #BaseProxy.expand = expand
+    BaseProxy.push = push
+    BaseProxy.alloc = alloc
+    BaseProxy.pop = pop
+    BaseProxy.index = index
+    BaseProxy.has = has
+    BaseProxy.left = left
+    BaseProxy.right = right
+    BaseProxy.min = min
+    BaseProxy.max = max
+    BaseProxy.next = next
+    BaseProxy.__getitem__ = __getitem__
+    BaseProxy.__setitem__ = __setitem__
+    BaseProxy.__len__ = __len__
+    BaseProxy.__iter__ = __iter__
+    BaseProxy.__lshift__ = __lshift__
+    BaseProxy.__rshift__ = __rshift__
+    BaseProxy.items = items
+
+    structref.define_boxing(struct, BaseProxy)
+    
+    overload_method(struct, "alloc")(lambda self, k, v=None: alloc.py_func)    
+    overload_method(struct, "push")(lambda self, k, v=None: push.py_func)
+    overload_method(struct, "free")(lambda self, idx: free.py_func)
+    overload_method(struct, "pop")(lambda self, k: pop.py_func)
+    overload_method(struct, "min")(lambda self: min.py_func)
+    overload_method(struct, "max")(lambda self: max.py_func)
+    overload_method(struct, "next")(lambda self: next.py_func)
+    overload_method(struct, "expand")(lambda self: expand.py_func)
+    overload_method(struct, "index")(lambda self, k: index.py_func)
+    overload_method(struct, "has")(lambda self, k: has.py_func)
+    overload_method(struct, "left")(lambda self, k: left.py_func)
+    overload_method(struct, "right")(lambda self, k: right.py_func)
+    overload_method(struct, "rotate")(lambda self, i0, b0, i1, b1, i2, b2, i3: rotate.py_func)
+
+    if mode!='comp': overload_method(struct, 'eval')(lambda self, x: ktype)
+    else: overload_method(struct, 'comp')(lambda self, x1, x2: ktype)
+    
+    
+    @nb.njit(cache=True)
+    def init(cap=16):
+        self = structref.new(t_heap)
+        self.idx = np.zeros(cap, dtype=idxtype)
+        self.body = self.idx['body'] # np.zeros(cap, dtype=vtype)
+        self.buf = np.zeros(1, dtype=vtype)
+        self.idx.id[:] = np.arange(1, cap+1, dtype=np.int32)
+        self.root = -1
+        self.cur = 0
+        self.cap = cap
+        self.size = 0
+        self.tail = cap-1
+
+        self.hist = np.zeros(256, dtype=np.int32)
+        self.hist[-1] = -1
+        self.dir = np.zeros(256, dtype=np.int32)
+        return self
+
+    def __new__(cls, cap=16):
+        return init(cap)
+    
+    BaseProxy.__new__ = __new__
+    return init
     
 def print_tree(tree, mar=3, bal=False):
     nodes = [tree.root]
@@ -542,12 +710,18 @@ def check_valid(tree, index=0):
     return True, current_height
 
 if __name__ == '__main__':
+    class IntAVLStruct(nb.types.StructRef): pass
+    class IntAVLProxy(structref.StructRefProxy): pass
+    
+    #IntAVL = TypedAVLTree(IntAVLStruct, IntAVLProxy, np.int32, np.int32)
+    #ints = IntAVL(16)
+    
     t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
-    def f(self, p): return p['y']
+    def f(self, x): return x['y']
 
-    
-    IntAVL = TypedAVLTree(f, t_point)
+    p = np.void((0,0), t_point)    
+    IntAVL = TypedAVLTree(IntAVLStruct, IntAVLProxy,f, t_point)
     ints = IntAVL()
     aaa
     
