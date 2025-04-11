@@ -3,14 +3,21 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 import numba as nb
-import structron
+from numba.experimental import structref
+import structronref
+
+__name__ = 'convexhull2d'
+sys.modules['convexhull2d'] = sys.modules.pop('__main__')
 
 # build Point dtype and PointStack
+
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
-PointStack = structron.TypedStack(t_point)
+
+struct = structronref.register('PointStack', globals())
+PointStack = structronref.TypedStack(*struct, t_point)
 
 # push to stack one by one, if not turn right, pop
-@nb.njit
+@nb.njit(cache=True)
 def convex_line(pts, idx):
     hull = PointStack(128)
     for i in idx:
@@ -27,21 +34,23 @@ def convex_line(pts, idx):
     return hull.body[:hull.size]
 
 # get up line and down line, then concat the hull
-@nb.njit
+@nb.njit(cache=True)
 def convexhull(pts):
     idx = np.argsort(pts['x'])
     up = convex_line(pts, idx)
     down = convex_line(pts, idx[::-1])
     return np.concatenate((up, down[1:]))
 
-if __name__ == '__main__':
+if __name__ == 'convexhull2d':
     from time import time
 
     pts = np.random.randn(102400,2).astype(np.float32)
     pts = pts.ravel().view(t_point)
 
-    
+    start = time()
     hull = convexhull(pts)
+    print('convex hull of 102400 point cost:', time()-start)
+    
     start = time()
     hull = convexhull(pts)
     print('convex hull of 102400 point cost:', time()-start)

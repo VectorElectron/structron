@@ -2,23 +2,39 @@ import sys; sys.path.append('../')
 
 import numpy as np
 import numba as nb
-import structron, random
+import structronref, random
+from numba.experimental import structref
 from time import time
+
+__name__ = 'avlrbtreereftest'
+sys.modules['avlrbtreereftest'] = sys.modules.pop('__main__')
 
 # custom point structure
 t_point = np.dtype([('x', np.float32), ('y', np.float32)])
 
 # TypedMemory cast Memory as dtype
-FloatAVL = structron.TypedAVLTree(np.float32)
+class FloatAVLStruct(nb.types.StructRef): pass
+class FloatAVLProxy(structref.StructRefProxy): pass
+FloatAVL = structronref.TypedAVLTree(FloatAVLStruct, FloatAVLProxy, None, np.float32)
+
+
+
+# TypedMemory cast Memory as dtype
+class FloatRBStruct(nb.types.StructRef): pass
+class FloatRBProxy(structref.StructRefProxy): pass
+FloatRB = structronref.TypedRBTree(FloatRBStruct, FloatRBProxy, None, np.float32)
+
+
+
 lst = FloatAVL()
 
-x = np.random.rand(100).astype(np.float32)
+x = np.random.rand(10000).astype(np.float32)
 
-@nb.njit
+@nb.njit(cache=True)
 def insert(lst, x):
     for i in x: lst.push(i)
 
-@nb.njit
+@nb.njit(cache=True)
 def pop(lst, x):
     for i in x: lst.pop(i)
 
@@ -32,9 +48,7 @@ b = time()
 pop(lst, x)
 print('1000w number avl insert %.3fs del %.3f s:'%(b-a, time()-b))
 
-'''
-# TypedMemory cast Memory as dtype
-FloatRB = structron.TypedRBTree(np.float32)
+
 lst = FloatRB()
 
 insert(lst, x[:1])
@@ -46,4 +60,4 @@ insert(lst, x)
 b = time()
 pop(lst, x)
 print('1000w number redblack insert %.3fs del %.3f s:'%(b-a, time()-b))
-'''
+

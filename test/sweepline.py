@@ -4,8 +4,11 @@ import numpy as np
 import numba as nb
 from numba.extending import intrinsic
 
-from structron import TypedAVLTree, TypedRBTree, TypedHeap
-from structron import TypedMemory
+from structron import TypedAVLTree, TypedRBTree, TypedHeap, TypedMemory
+from numba.experimental import structref
+
+#__name__ = 'sweepline'
+#sys.modules['sweepline'] = sys.modules.pop('__main__')
 
 
 t_real = np.dtype([('i', np.int32), ('f', np.float32)])
@@ -50,15 +53,15 @@ def line_cross(actline, i1, i2, e0):
         if x == actline.sweepx: return 0
     return -1
 
-def comp_e(self, e1, e2):
-    if e1.y != e2.y: return e2.y - e1.y
-    if e1.x != e2.x: return e1.x - e2.x
-    if e1.tp != e2.tp: return e1.tp - e2.tp
-    if e1.s != e2.s: return e1.s - e2.s
-    if e1.e != e2.e: return e1.e - e2.e
+def comp_e(self, x1, x2):
+    if x1.y != x2.y: return x2.y - x1.y
+    if x1.x != x2.x: return x1.x - x2.x
+    if x1.tp != x2.tp: return x1.tp - x2.tp
+    if x1.s != x2.s: return x1.s - x2.s
+    if x1.e != x2.e: return x1.e - x2.e
     return 0
 
-def comp_l(self, l1, l2):
+def comp_l(self, x1, x2):
     def eval_x(self, l):
         if l['y1']==l['y2']: return self.sweepx
         dx = l['x1'] * (l['y2'] - l['y1'])
@@ -71,9 +74,9 @@ def comp_l(self, l1, l2):
         norm = (dx**2 + dy**2)**0.5
         return dx / norm * self.inout
 
-    d = eval_x(self, l1) - eval_x(self, l2)
+    d = eval_x(self, x1) - eval_x(self, x2)
     if d!=0: return d
-    return angle_x(self, l1) - angle_x(self, l2)
+    return angle_x(self, x1) - angle_x(self, x2)
 
 def print_tree(tree, mar=3, bal=False):
     nodes = [tree.root]
@@ -106,11 +109,18 @@ def print_tree(tree, mar=3, bal=False):
         s += 2 ** r
     print()
 
-ActiveLine = TypedAVLTree(comp_l, t_line,
+class LineStruct(nb.types.StructRef): pass
+class LineProxy(structref.StructRefProxy): pass
+ActiveLine = TypedAVLTree(LineStruct, LineProxy, comp_l, t_line,
     {'sweepy':np.float64, 'sweepx':np.float64, 'inout':np.int32})
-EventQueue = TypedAVLTree(comp_e, t_event)
-EventHeap = TypedHeap(comp_e, t_event)
-PointMemory = TypedMemory(t_point)
+
+class EventStruct(nb.types.StructRef): pass
+class EventProxy(structref.StructRefProxy): pass
+EventQueue = TypedAVLTree(EventStruct, EventProxy, comp_e, t_event)
+
+class PointStruct(nb.types.StructRef): pass
+class PointProxy(structref.StructRefProxy): pass
+PointMemory = TypedMemory(PointStruct, PointProxy, t_point)
 
 @nb.njit
 def init_events(lines):
@@ -251,17 +261,19 @@ def findx(lines):
 
             actline.min() if minid==-1 else actline.right(l0)
 
-            while True:
-                cur = actline.next()
+            for cur in actline.next():
                 if cur in xs[:xn]:
                     series[sn] = cur; sn+=1
                     break
                 series[0] = cur
 
-            while True:
-                cur = actline.next()
+            stop = False
+            for cur in actline.next():
                 series[sn] = cur; sn+=1
-                if not cur in xs[:xn]: break
+                if not cur in xs[:xn]:
+                    stop = True; break
+            if not stop:
+                series[sn] = -1; sn+=1
 
             if debug: print(xs[:xn], series[:sn])
 
